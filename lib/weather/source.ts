@@ -8,7 +8,8 @@
  * weather value, and IMD has no geocoder.
  */
 
-import { openMeteo, openMeteoPlaces } from './open-meteo';
+import { openMeteo } from './open-meteo';
+import { routedPlaces } from './places';
 import type { PlaceResolver, WeatherSource } from './types';
 
 const WEATHER_SOURCE = process.env.WEATHER_SOURCE ?? 'open-meteo';
@@ -27,6 +28,11 @@ export function weatherSource(): WeatherSource {
   return source;
 }
 
+/**
+ * Routed by script: Open-Meteo for Latin, Nominatim for Devanagari. Not
+ * switched by WEATHER_SOURCE — a geocode is not a weather value, and IMD has
+ * no geocoder, so this survives the Phase 4 swap unchanged.
+ */
 export function placeResolver(): PlaceResolver {
-  return openMeteoPlaces;
+  return routedPlaces;
 }

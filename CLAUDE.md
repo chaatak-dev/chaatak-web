@@ -11,18 +11,74 @@ of Earth Sciences). Team: Overcast. Live at chaatak.com.
 
 ## The one rule that shapes everything
 
-**This system never generates weather information. It only retrieves and renders it.**
+**The LLM never generates a weather value.**
 
-The LLM has exactly two jobs:
+It may write freely *around* values it was handed. It may not produce one. A
+number, a severity level, a warning category, a forecast — none of these may
+originate in a model. Not as a fallback, not as an estimate, not when data is
+missing, not when the user pushes. A hallucinated cyclone warning in a
+disaster-management system is a safety incident, not a bug.
 
-1. **Parse** — turn a natural-language question into a structured query
-   (intent, location, time window, variable).
-2. **Render** — turn retrieved values into a sentence in the user's language.
+The model is allowed to be genuinely conversational because the output is
+**verified programmatically before it ships**, not because it was asked nicely
+in a prompt.
 
-The LLM must never produce a number, a severity level, a warning category, or
-a forecast. Not as a fallback, not as an estimate, not when data is missing,
-not when the user pushes. A hallucinated cyclone warning in a disaster-
-management system is a safety incident, not a bug.
+```
+parse → fetch → render → VERIFY → ship
+```
+
+The LLM's jobs:
+
+1. **Parse** — messy natural language into a structured query
+   (intent, place, time window, variable). It *extracts* the place substring
+   verbatim; it never normalises or transliterates it.
+2. **Render** — turn fetched values into a natural reply in the user's
+   language and register.
+
+### The verification gate
+
+Build the gate before the renderer. It is programmatic, never a prompt
+instruction.
+
+- Extract every numeral from the rendered output. Every one must appear in
+  the fetched data. Any number that does not means the model invented it.
+- Same check for place names.
+- On any failure: **reject the render, ship the template response, log it.**
+
+Two holes the naive version leaves open, both of which must be closed or the
+gate is theatre:
+
+- **Numeral scripts.** A Latin-only `\d` regex does not match `२५`, so a
+  fabricated Devanagari number would never be extracted and would sail
+  through. Normalise Devanagari digits to Latin before extracting.
+- **Spelled-out numbers.** "पच्चीस डिग्री" contains no numeral at all and so
+  passes a numeral check trivially. Values must always be rendered as
+  digits; any number-word in the output is itself a rejection.
+
+### Locked: severity is never re-worded
+
+Warning severity comes from the template catalogue **verbatim**. The model
+writes around it and never restates it. The severity string is injected, not
+generated, and re-wording is forbidden at the prompt level — because a model
+softening "extremely heavy rain" into something milder produces a sentence
+that is fluent, plausible, and passes every numeric check. It is the one
+failure verification cannot catch, so it is prevented structurally instead.
+
+### Register, script, dialect
+
+- Mirror the user. Casual in, casual out. Devanagari in, Devanagari out.
+  Hinglish in, Hinglish out. **Never switch script on the user.**
+- Understand Haryanvi, Bhojpuri, Awadhi, Rajasthani and similar on input —
+  they normalise toward Hindi and the parser handles it.
+- Do **not** claim or fake native dialect output. Reply in the user's
+  language, matching tone.
+
+### Templates remain
+
+Templates are the fallback whenever a render call fails or the gate rejects.
+WMO codes, the warning taxonomy and spoken units stay enumerated and
+human-translated. They are not legacy — they are the floor the system lands
+on when the model is unavailable or wrong.
 
 Practical consequences:
 
@@ -41,6 +97,19 @@ Practical consequences:
 primary; Open-Meteo is the development fallback while IMD API access is
 pending. Swapping sources must never require touching application logic.
 
+The same pattern governs every external dependency — `WeatherSource`,
+`PlaceResolver`, `SpeechSource`, `LanguageModel`. One interface, several
+implementations, the primary chosen by a single config value, all keys
+server-side.
+
+**Place resolution is routed by script, not by language.** Open-Meteo's
+geocoder returns nothing for Devanagari — not for मुंबई, not for जयपुर — so
+Devanagari queries go to Nominatim and Latin queries stay on Open-Meteo.
+Transliterating first was tried and rejected: it fails wrongly rather than
+loudly, matching जयपुर to Jayapura in Indonesia and बाराबंकी to a Barabānki
+in Odisha. This is script routing, never language detection; the user's
+language is always an explicit choice.
+
 ```ts
 interface WeatherSource {
   name: string;
@@ -58,9 +127,19 @@ matched to how often that endpoint actually updates. Nowcast refreshes far
 more often than a 7-day forecast. IMD's own API guidelines ask for caching,
 and response latency is a scored evaluation criterion.
 
-**Intent routing.** Simple lookups ("temperature in Ghaziabad") bypass the LLM
-entirely and serve a cached template response. Only ambiguous or multi-part
-questions go to the model. Target sub-200ms for the fast path.
+**Intent routing. The LLM is the exception path, not the default.** We are on
+free tiers with no billing, so the pattern layer is load-bearing architecture
+rather than an optimisation. Three layers, in order:
+
+1. **Patterns.** Regex plus a place gazetteer handles bare place names,
+   `<place> mein mausam`, `kal barish`, `aaj ka mausam` and common variants
+   in both scripts. No model call. Target sub-200ms.
+2. **Parse cache**, keyed on `(normalisedText, lang)` with a short TTL.
+   Twenty people asking the same thing is one call.
+3. **LLM parse**, only for what patterns and cache both miss.
+
+Log which layer served each query. We must be able to state what percentage
+of traffic never touched a model.
 
 **Warning vocabulary is never machine-translated.** IMD's district warning
 codes (17) and nowcast categories (19) are a fixed enumerated set. They are

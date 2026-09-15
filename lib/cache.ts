@@ -23,6 +23,11 @@ export const TTL = {
   current: 10 * 60 * 1000,
   /** Daily aggregates are rebuilt on the model run. */
   daily: 60 * 60 * 1000,
+  /**
+   * Parsed queries. Short, because it exists to absorb a burst of people
+   * asking the same thing rather than to remember anything for long.
+   */
+  parse: 10 * 60 * 1000,
 } as const;
 
 /**
