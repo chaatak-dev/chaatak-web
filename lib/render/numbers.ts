@@ -24,13 +24,21 @@ export function normaliseDigits(text: string): string {
 /**
  * Every number in the text, after digit normalisation.
  *
- * The lookbehind keeps "2026-09-17" from reading as 2026, -9, -17 while still
- * allowing a genuinely negative temperature at the start of a clause.
+ * A leading hyphen is a minus sign only when a digit does not precede it, so
+ * "2026-09-17" reads as 2026, 9, 17 rather than 2026, -9, -17, while "-2.5" at
+ * the start of a clause still reads as negative.
+ *
+ * Getting this wrong fails in the over-rejecting direction, which is how it
+ * was found: an earlier version excluded hyphens from the lookbehind entirely
+ * and so extracted ONLY 2026 from a date. The day and month never entered the
+ * verified set, and a reply that correctly said "17 सितंबर" was rejected as an
+ * invented number. A gate that refuses true statements is one that gets
+ * switched off.
  */
 export function extractNumbers(text: string): number[] {
   const normalised = normaliseDigits(text);
   const found: number[] = [];
-  for (const m of normalised.matchAll(/(?<![\d-])(-?\d+(?:\.\d+)?)/g)) {
+  for (const m of normalised.matchAll(/(?<!\d)(-?\d+(?:\.\d+)?)/g)) {
     const n = Number(m[1]);
     if (Number.isFinite(n)) found.push(n);
   }

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildFacts, verifyRender } from './gate';
+import { extractNumbers } from './numbers';
 
 /**
  * The gate is the only thing standing between a conversational model and a
@@ -143,4 +144,25 @@ test('rejects a render that drops or softens the injected severity', () => {
   const verbatim =
     'गाज़ियाबाद में अत्यंत भारी बारिश होगी। तापमान 25.2 डिग्री सेल्सियस।';
   assert.equal(verifyRender(verbatim, withSeverity).ok, true);
+});
+
+test('every component of a date is extractable, not just the year', () => {
+  // The over-rejection that shipped: "2026-09-17" yielded only 2026, so a
+  // reply saying "17 सितंबर" was rejected as an invented number even though
+  // the model had been shown that exact date.
+  assert.deepEqual(extractNumbers('2026-09-17'), [2026, 9, 17]);
+  assert.deepEqual(extractNumbers('01:45'), [1, 45]);
+
+  // A genuine negative still reads as negative.
+  assert.deepEqual(extractNumbers('-2.5'), [-2.5]);
+  assert.deepEqual(extractNumbers('तापमान -2.5 डिग्री'), [-2.5]);
+});
+
+test('a reply may cite a forecast date it was given', () => {
+  const reply = 'गाज़ियाबाद में 17 सितंबर को 1.4 mm बारिश होगी।';
+  const facts = buildFacts({
+    payload: { outlook: [{ date: '2026-09-17', precipitationSum: 1.4 }] },
+    places: ['Ghaziabad'],
+  });
+  assert.equal(verifyRender(reply, facts).ok, true);
 });

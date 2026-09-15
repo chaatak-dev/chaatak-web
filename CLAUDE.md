@@ -27,13 +27,66 @@ in a prompt.
 parse → fetch → render → VERIFY → ship
 ```
 
+### What the rule does NOT say
+
+It does not say the model must be terse, cautious, or mechanical. A weather
+value is the only thing it may not originate. **Everything else is ordinary
+assistant behaviour and is expected:** opinions, advice, recommendations,
+follow-up questions, explanations, reasoning over the numbers it was handed,
+casual conversation.
+
+> "I wouldn't — there's a thunderstorm warning until this evening." — fine.
+> "Winds are around 40 km/h." — only if 40 came from upstream.
+
+**Advice is free; values are verified.** Do not read this rule more broadly
+than it is written. An earlier reading of it suppressed normal assistant
+behaviour, and that was wrong.
+
 The LLM's jobs:
 
 1. **Parse** — messy natural language into a structured query
    (intent, place, time window, variable). It *extracts* the place substring
    verbatim; it never normalises or transliterates it.
-2. **Render** — turn fetched values into a natural reply in the user's
-   language and register.
+2. **Render** — answer the user. Report fetched values, reason over them,
+   advise, explain, and converse, in the user's language and register.
+
+### Scope: a weather assistant, not a general assistant
+
+In scope: forecasts, warnings, anything that depends on conditions ("can I
+play cricket", "should I travel", "what should I wear", "is it safe to spray
+today", "when should I harvest"), explanations of weather terms, and questions
+about Chaatak's own data and sources. Greetings and small talk on the way to a
+weather question are fine.
+
+Out of scope: coding, essays, general knowledge, maths, personal advice with
+no weather bearing. Decline in **one friendly line** in the user's language
+and register, then redirect. No lecture, no refusal boilerplate.
+
+**The boundary is generous, and unsure resolves to in scope.** If a question
+depends on weather in any way, answer it. `क्या आज घर से निकलूँ?` is a weather
+question wearing casual clothes and must never be refused. Turning away a
+farmer's real question is a worse failure than answering a slightly off-topic
+one.
+
+### Locked: advice never contradicts an active warning
+
+Under an orange or red warning the model may not say conditions look fine.
+Enforced programmatically, not by prompt, and with two independent defences
+because one is not enough:
+
+- **Structural.** The render is given the severity string and told the answer
+  must open with it. A render that does not open with the severity is
+  rejected outright, whatever it says afterwards.
+- **Lexical.** Unnegated reassurance markers are rejected.
+
+The lexicon is best-effort and will leak — Hindi has more ways to say "it's
+fine" than any list will hold. Structure is what catches the ones vocabulary
+misses, which is why the structural check is not optional.
+
+Both checks are deliberately biased toward rejection. A false positive ships
+the template, which already states the severity verbatim; a false negative
+tells someone it is safe during a cyclone. Asymmetric consequences justify
+asymmetric bias.
 
 ### The verification gate
 
@@ -45,6 +98,17 @@ instruction.
 - Same check for place names.
 - On any failure: **reject the render, ship the template response, log it.**
 
+**A weather claim is a number adjacent to a unit or a variable.** That
+definition is what keeps the gate usable. A turn that fetched nothing is held
+to "no numeral near a measurement word" rather than "no numeral at all" —
+otherwise "I can give you a 3-day forecast" is rejected for containing a 3,
+and a gate that strict is theatre in the other direction.
+
+Every rejection is logged **with the rejected text and the rule that caught
+it**. Without that there is no way to tell an over-strict gate from a model
+actually misbehaving, and that is exactly the distinction worth knowing before
+a demo rather than after.
+
 Two holes the naive version leaves open, both of which must be closed or the
 gate is theatre:
 
@@ -54,6 +118,15 @@ gate is theatre:
 - **Spelled-out numbers.** "पच्चीस डिग्री" contains no numeral at all and so
   passes a numeral check trivially. Values must always be rendered as
   digits; any number-word in the output is itself a rejection.
+
+**Rule: every lexical defence in Devanagari matches whole words, never
+substrings.** Single-character tokens are ordinary words in Hindi and also sit
+inside common longer ones — the negator `न` occurs in `लेकिन`, `चेतावनी` and
+`निकलना`. A `String.includes` check for it treats nearly every sentence as
+negated and silently switches the whole defence off. This has now failed open
+twice, in the number-word check and again in the reassurance check, so it is a
+standing rule rather than a bug that was fixed. `\b` does not work here;
+use explicit boundaries: `(?<![\p{L}\p{M}])word(?![\p{L}\p{M}])`.
 
 ### Locked: severity is never re-worded
 

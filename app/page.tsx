@@ -1,44 +1,78 @@
 'use client';
 
 /**
- * The weather query page: ask by voice or by typing, hear the answer back.
+ * Chaatak: a weather conversation.
  *
- * The mic never changes what is said. A transcript goes to the query layer
- * exactly as the engine produced it, and TTS reads the composed answer. There
- * is no rewriting in between.
+ * Ask by voice or by typing, get a verified answer, follow up. The mic never
+ * changes what is said — a transcript goes to the query layer exactly as the
+ * engine produced it, and TTS reads what shipped.
  *
- * Nothing numeric on screen or in the spoken reply is computed here. It
- * arrived in the response body from /api/weather, which got it from an
- * adapter, which got it from upstream.
+ * Nothing numeric here is computed on this side. Every number came through
+ * /api/chat, which got it from an adapter, and passed the gate before it was
+ * allowed into the transcript.
  */
 
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
-import type { WeatherResponse } from '@/lib/weather/api';
-import type { NoData } from '@/lib/weather/types';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { ChatReply } from './api/chat/route';
+import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
-import { composeAnswer } from '@/lib/speech/compose';
 import { pickSource } from '@/lib/speech/source';
 import { placeLine } from '@/lib/format';
-import { CurrentConditions } from './components/CurrentConditions';
+import { ChatTurn } from './components/ChatTurn';
 import { LangToggle } from './components/LangToggle';
 import { LogoMark } from './components/LogoMark';
 import { Mic } from './components/Mic';
-import { NoDataField } from './components/NoDataField';
-import { Outlook } from './components/Outlook';
-import { WarningSlot } from './components/WarningSlot';
-
-type Status = 'idle' | 'loading' | 'done';
 
 const LANG_KEY = 'chaatak:voice-lang';
 const LANG_EVENT = 'chaatak:voice-lang-changed';
+const SCROLLBACK_KEY = 'chaatak:scrollback';
+const SCROLLBACK_EVENT = 'chaatak:scrollback-changed';
+const MAX_STORED = 40;
+
+const noopSubscribe = () => () => {};
 
 /**
- * Browser capability and the stored language preference are external values,
- * not component state. Reading them through useSyncExternalStore gives the
- * server a defined snapshot — so there is no hydration mismatch — and avoids
- * setting state from an effect just to learn what the browser can do.
+ * Scrollback lives in sessionStorage and is read through useSyncExternalStore
+ * rather than restored from an effect. That gives the server a defined
+ * snapshot — an empty transcript — so there is no hydration mismatch, and it
+ * keeps the persisted copy and the rendered copy from drifting apart.
+ *
+ * The parsed value is cached because getSnapshot must return a stable
+ * reference; re-parsing on every call would re-render forever.
  */
-const noopSubscribe = () => () => {};
+const EMPTY: Message[] = [];
+let cachedRaw: string | null = null;
+let cachedMessages: Message[] = EMPTY;
+
+function subscribeScrollback(onChange: () => void): () => void {
+  window.addEventListener(SCROLLBACK_EVENT, onChange);
+  return () => window.removeEventListener(SCROLLBACK_EVENT, onChange);
+}
+
+function scrollbackSnapshot(): Message[] {
+  try {
+    const raw = sessionStorage.getItem(SCROLLBACK_KEY);
+    if (raw !== cachedRaw) {
+      cachedRaw = raw;
+      cachedMessages = raw ? (JSON.parse(raw) as Message[]) : EMPTY;
+    }
+    return cachedMessages;
+  } catch {
+    return EMPTY;
+  }
+}
+
+function writeScrollback(messages: Message[]): void {
+  const kept = messages.slice(-MAX_STORED);
+  try {
+    sessionStorage.setItem(SCROLLBACK_KEY, JSON.stringify(kept));
+  } catch {
+    // Private mode: the conversation still works, it just does not persist.
+    cachedRaw = null;
+    cachedMessages = kept;
+  }
+  window.dispatchEvent(new Event(SCROLLBACK_EVENT));
+}
 
 function subscribeLang(onChange: () => void): () => void {
   window.addEventListener(LANG_EVENT, onChange);
@@ -49,46 +83,22 @@ function storedLang(): SpeechLang {
   try {
     return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'hi';
   } catch {
-    // Private mode, or site data blocked. Hindi is the default either way.
     return 'hi';
   }
 }
 
-function readerZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
+let seq = 0;
+const nextId = () => `m${Date.now().toString(36)}-${(seq += 1)}`;
 
-/** Our own failure, not a source's. Named so it is not read as Open-Meteo. */
-function routeFailure(): NoData {
-  return {
-    kind: 'noData',
-    reason: 'lookupFailed',
-    source: 'Chaatak',
-    endpoint: '/api/weather',
-    checkedAt: new Date().toISOString(),
-    statement: {
-      hi: 'यह ऐप अपने सर्वर तक नहीं पहुँच सका। इंटरनेट जाँचें और फिर कोशिश करें।',
-      en: 'This app could not reach its own server. Check your connection and try again.',
-    },
-  };
-}
-
-export default function Home() {
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
-  const [result, setResult] = useState<WeatherResponse | null>(null);
-  const [failure, setFailure] = useState<NoData | null>(null);
-
-  const lang = useSyncExternalStore<SpeechLang>(
-    subscribeLang,
-    storedLang,
-    // Server snapshot: Hindi is primary, so it is also the pre-hydration value.
-    () => 'hi',
+export default function Chat() {
+  const messages = useSyncExternalStore(
+    subscribeScrollback,
+    scrollbackSnapshot,
+    () => EMPTY,
   );
+  const [standing, setStanding] = useState<StandingQuery | null>(null);
+  const [draft, setDraft] = useState('');
+  const [thinking, setThinking] = useState(false);
   const [micState, setMicState] = useState<MicState>('idle');
   const [partial, setPartial] = useState('');
   const [speaking, setSpeaking] = useState(false);
@@ -96,9 +106,9 @@ export default function Home() {
   const sessionRef = useRef<{ stop(): void } | null>(null);
   const speakingRef = useRef<{ cancel(): void } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  // Capability decides whether the mic renders at all. A browser with no
-  // recogniser shows no control rather than one that cannot work.
+  const lang = useSyncExternalStore<SpeechLang>(subscribeLang, storedLang, () => 'hi');
   const canRecognise = useSyncExternalStore(
     noopSubscribe,
     () => pickSource('recognise') !== null,
@@ -110,48 +120,87 @@ export default function Home() {
     () => false,
   );
 
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages]);
+
   const chooseLang = useCallback((next: SpeechLang) => {
     try {
       localStorage.setItem(LANG_KEY, next);
     } catch {
-      /* preference simply does not persist */
+      /* preference does not persist */
     }
     window.dispatchEvent(new Event(LANG_EVENT));
   }, []);
 
-  const lookup = useCallback(
-    async (place: string, spoken: boolean) => {
-      setStatus('loading');
-      setFailure(null);
+  const speak = useCallback((text: string, at: SpeechLang) => {
+    const speaker = pickSource('speak');
+    if (!speaker) return;
+    speakingRef.current?.cancel();
+    const handle = speaker.speak([{ text, lang: at }]);
+    speakingRef.current = handle;
+    setSpeaking(true);
+    void handle.done.finally(() => setSpeaking(false));
+  }, []);
 
-      let response: WeatherResponse | null = null;
+  const ask = useCallback(
+    async (question: string, spoken: boolean) => {
+      const asked: Message = {
+        id: nextId(),
+        role: 'user',
+        text: question,
+        lang,
+        at: new Date().toISOString(),
+      };
+
+      const history = [...messages, asked];
+      writeScrollback(history);
+      setDraft('');
+      setThinking(true);
+
       try {
-        const res = await fetch(`/api/weather?place=${encodeURIComponent(place)}`);
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ question, lang, history, standing }),
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        response = (await res.json()) as WeatherResponse;
-        setResult(response);
+        const reply = (await res.json()) as ChatReply;
+
+        setStanding(reply.standing);
+        writeScrollback([
+          ...history,
+          {
+            id: nextId(),
+            role: 'assistant',
+            text: reply.text,
+            lang: reply.lang,
+            at: new Date().toISOString(),
+            grounding: reply.grounding,
+          },
+        ]);
+
+        if (spoken) speak(reply.text, reply.lang);
       } catch {
-        setResult(null);
-        setFailure(routeFailure());
+        writeScrollback([
+          ...history,
+          {
+            id: nextId(),
+            role: 'assistant',
+            text:
+              lang === 'hi'
+                ? 'सर्वर तक नहीं पहुँच सका। इंटरनेट जाँचें और फिर कोशिश करें।'
+                : 'Could not reach the server. Check your connection and try again.',
+            lang,
+            at: new Date().toISOString(),
+          },
+        ]);
       } finally {
-        setStatus('done');
+        setThinking(false);
         setMicState('idle');
       }
-
-      // Asked by voice, answered by voice — including where the value came
-      // from, so a listener who cannot read the screen still gets provenance.
-      if (spoken && response) {
-        const speaker = pickSource('speak');
-        if (speaker) {
-          speakingRef.current?.cancel();
-          const handle = speaker.speak(composeAnswer(response, lang));
-          speakingRef.current = handle;
-          setSpeaking(true);
-          void handle.done.finally(() => setSpeaking(false));
-        }
-      }
     },
-    [lang],
+    [lang, messages, speak, standing],
   );
 
   const startListening = useCallback(() => {
@@ -162,10 +211,7 @@ export default function Home() {
     setPartial('');
     setMicState('listening');
 
-    const session = source.recognise({
-      lang,
-      onPartial: (text) => setPartial(text),
-    });
+    const session = source.recognise({ lang, onPartial: setPartial });
     sessionRef.current = session;
 
     void session.result.then((recognition) => {
@@ -173,39 +219,24 @@ export default function Home() {
       setPartial('');
 
       if (recognition.kind === 'heard') {
-        // Verbatim into the query layer. No trimming, no correction.
-        setQuery(recognition.transcript);
-        void lookup(recognition.transcript, true);
+        void ask(recognition.transcript, true);
         return;
       }
       if (recognition.kind === 'denied') return setMicState('denied');
-      // Heard nothing, or the engine failed: say so, and the text input is
-      // right there. Never a guess at what was said.
       setMicState('failed');
       inputRef.current?.focus();
     });
-  }, [lang, lookup]);
+  }, [ask, lang]);
 
   const stopListening = useCallback(() => {
-    // Entered the moment the user stops, not when the response lands. ASR is
-    // a ~1.6s round trip with no streaming endpoint behind it.
+    // Entered on stop, not when the answer lands: ASR is a ~1.6s round trip
+    // and there is no streaming endpoint to hide it behind.
     setMicState('processing');
     sessionRef.current?.stop();
   }, []);
 
-  const onSubmit = useCallback(
-    (event: React.FormEvent) => {
-      event.preventDefault();
-      void lookup(query, false);
-    },
-    [lookup, query],
-  );
-
-  const timeZone =
-    result?.kind === 'resolved' ? result.place.timezone : readerZone();
-  const header = result?.kind === 'resolved' ? placeLine(result.place) : null;
-  // Capability wins over the state machine: unsupported renders nothing.
   const shownMicState: MicState = canRecognise ? micState : 'unsupported';
+  const where = standing?.resolvedPlace ? placeLine(standing.resolvedPlace) : null;
 
   return (
     <>
@@ -213,8 +244,8 @@ export default function Home() {
         <div className="masthead__inner">
           <LogoMark size={40} />
           <div className="masthead__where">
-            {header ? (
-              <p className="masthead__place">{header}</p>
+            {where ? (
+              <p className="masthead__place">{where}</p>
             ) : (
               <p className="masthead__brand">
                 <span lang="hi" className="masthead__brand-hi">
@@ -224,126 +255,104 @@ export default function Home() {
               </p>
             )}
           </div>
+          {shownMicState !== 'unsupported' && (
+            <LangToggle value={lang} onChange={chooseLang} compact />
+          )}
         </div>
       </header>
 
-      <main className="page">
-        {shownMicState !== 'unsupported' && (
-          <LangToggle value={lang} onChange={chooseLang} />
-        )}
-
-        <Mic
-          state={shownMicState}
-          lang={lang}
-          partial={partial}
-          onStart={startListening}
-          onStop={stopListening}
-        />
-
-        <form className="query" onSubmit={onSubmit}>
-          <label className="query__label" htmlFor="place">
-            <span lang="hi" className="query__label-hi">
-              या जगह का नाम लिखें
-            </span>
-            <span className="query__label-en">Or type a place name</span>
-          </label>
-
-          <div className="query__row">
-            <input
-              id="place"
-              ref={inputRef}
-              className="query__input"
-              type="text"
-              name="place"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ghaziabad"
-              autoComplete="off"
-              enterKeyHint="search"
-            />
-            <button
-              className="query__submit"
-              type="submit"
-              disabled={status === 'loading'}
-              aria-label="Show weather for this place"
-            >
-              <span lang="hi">देखें</span>
-            </button>
-          </div>
-        </form>
-
-        <div className="results" aria-live="polite" aria-busy={status === 'loading'}>
-          {status === 'idle' && (
-            <section className="idle">
-              <p lang="hi" className="idle__headline">
-                बोलकर या लिखकर पूछें
+      <main className="chat">
+        <div className="chat__scroll" aria-live="polite">
+          {messages.length === 0 ? (
+            <section className="chat__empty">
+              <p lang="hi" className="chat__empty-headline">
+                मौसम के बारे में कुछ भी पूछें
               </p>
-              <p className="idle__subtitle">
-                Current conditions and a three-day outlook, with the source and
-                the time it was last updated under every value.
+              <p className="chat__empty-subtitle">
+                Ask about the weather — by voice or by typing. Every number
+                comes with its source and the time it was issued.
               </p>
+              <ul className="chat__examples">
+                <li lang="hi">बाराबंकी में कल बारिश होगी?</li>
+                <li lang="hi">क्या मैं आज क्रिकेट खेल सकता हूँ?</li>
+                <li lang="hi">ऑरेंज अलर्ट का मतलब क्या है?</li>
+              </ul>
             </section>
+          ) : (
+            messages.map((message) => <ChatTurn key={message.id} message={message} />)
           )}
 
-          {status === 'loading' && (
-            <p className="loading">
-              <span lang="hi">जाँच रहे हैं…</span>
-              <span className="loading__en">Checking the source…</span>
+          {thinking && (
+            <p className="chat__thinking">
+              <span lang="hi">सोच रहे हैं…</span>
+              <span className="chat__thinking-en">Thinking</span>
             </p>
           )}
 
-          {status === 'done' && failure && (
-            <NoDataField state={failure} timeZone={timeZone} />
-          )}
+          <div ref={endRef} />
+        </div>
 
-          {status === 'done' && result?.kind === 'unresolved' && (
-            <NoDataField state={result.noData} timeZone={timeZone} />
-          )}
+        <div className="composer">
+          <Mic
+            state={shownMicState}
+            lang={lang}
+            partial={partial}
+            onStart={startListening}
+            onStop={stopListening}
+            compact
+          />
 
-          {status === 'done' && result?.kind === 'resolved' && (
-            <>
-              {canSpeak && (
-                <div className="playback">
-                  <button
-                    type="button"
-                    className="playback__button"
-                    onClick={() => {
-                      if (speaking) {
-                        speakingRef.current?.cancel();
-                        setSpeaking(false);
-                        return;
-                      }
-                      const speaker = pickSource('speak');
-                      if (!speaker) return;
-                      const handle = speaker.speak(composeAnswer(result, lang));
-                      speakingRef.current = handle;
-                      setSpeaking(true);
-                      void handle.done.finally(() => setSpeaking(false));
-                    }}
-                  >
-                    <span lang="hi">{speaking ? 'बंद करें' : 'सुनें'}</span>
-                    <span className="playback__en">
-                      {speaking ? 'Stop' : 'Listen'}
-                    </span>
-                  </button>
-                </div>
-              )}
+          <form
+            className="composer__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = draft.trim();
+              if (text) void ask(text, false);
+            }}
+          >
+            <input
+              ref={inputRef}
+              className="composer__input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={lang === 'hi' ? 'कुछ भी पूछें…' : 'Ask anything…'}
+              aria-label="Ask about the weather"
+              autoComplete="off"
+              enterKeyHint="send"
+            />
+            <button
+              className="composer__send"
+              type="submit"
+              disabled={thinking || !draft.trim()}
+              aria-label="Send"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4 12h15M13 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </form>
 
-              <WarningSlot warnings={result.warnings} timeZone={timeZone} />
-              <CurrentConditions reading={result.current} timeZone={timeZone} />
-              <Outlook forecast={result.outlook} timeZone={timeZone} />
-            </>
+          {canSpeak && speaking && (
+            <button
+              type="button"
+              className="composer__stopspeech"
+              onClick={() => {
+                speakingRef.current?.cancel();
+                setSpeaking(false);
+              }}
+            >
+              <span lang="hi">बोलना बंद करें</span>
+            </button>
           )}
         </div>
       </main>
-
-      <footer className="colophon">
-        <p>
-          Chaatak shows India Meteorological Department bulletins. IMD API
-          access is pending, so values here come from Open-Meteo and are
-          labelled as such. No value on this page is generated by Chaatak.
-        </p>
-      </footer>
     </>
   );
 }

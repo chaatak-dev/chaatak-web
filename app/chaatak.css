@@ -811,3 +811,262 @@
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
+
+/* ------------------------------------------------------------------ */
+/* Chat                                                                */
+/*                                                                     */
+/* A conversation, not a search box with a result panel. The composer  */
+/* is pinned to the bottom with the mic beside the input, which is     */
+/* where a thumb already is on a phone.                                */
+/* ------------------------------------------------------------------ */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  max-width: var(--column);
+  min-height: 0;
+  margin-inline: auto;
+}
+
+.chat__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px var(--gutter) 8px;
+  overscroll-behavior: contain;
+}
+
+/* Empty state: a statement of what this is, and three things to try. */
+.chat__empty {
+  padding-top: 8px;
+}
+
+.chat__empty-headline {
+  font-family: var(--font-deva);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.chat__empty-subtitle {
+  max-width: 30rem;
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.chat__examples {
+  margin-top: 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.chat__examples li {
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  font-family: var(--font-deva);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+/* Turns. The assistant sits on paper, the user in a tinted block — the
+   difference is ground, not a coloured bubble, keeping the page a notice. */
+.turn {
+  margin-bottom: 18px;
+}
+
+.turn__role {
+  margin-bottom: 4px;
+  font-family: var(--font-deva);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.turn--user .turn__bubble {
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.turn--assistant .turn__bubble {
+  padding: 2px 0 0;
+}
+
+.turn__text {
+  font-size: 16.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.turn__text:lang(hi) {
+  font-family: var(--font-deva);
+  line-height: var(--leading-deva);
+}
+
+.chat__thinking {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+.chat__thinking [lang='hi'] {
+  font-family: var(--font-deva);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.chat__thinking-en {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ */
+/* Composer                                                            */
+/* ------------------------------------------------------------------ */
+
+.composer {
+  position: sticky;
+  bottom: 0;
+  padding: 10px var(--gutter) calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--paper);
+  border-top: 1px solid var(--hairline);
+}
+
+.composer__form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  padding: 0 14px;
+  font-size: 17px;
+  background: var(--paper);
+  border: 1.5px solid var(--hairline);
+  border-radius: var(--radius);
+}
+
+.composer__input::placeholder {
+  color: var(--text-faint);
+}
+
+.composer__input:focus {
+  border-color: var(--accent);
+}
+
+.composer__send {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  color: var(--paper);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.composer__send svg {
+  width: 22px;
+  height: 22px;
+}
+
+.composer__send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.composer__stopspeech {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 8px;
+  font-family: var(--font-deva);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* Paired with a text input, the mic takes the 52px size and sits inline
+   rather than centred. The brand rule sizes it by what it sits beside. */
+.mic--compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 10px;
+  text-align: left;
+}
+
+.mic--compact .mic__button {
+  width: 52px;
+  height: 52px;
+}
+
+.mic--compact .mic__glyph {
+  width: 23px;
+  height: 23px;
+}
+
+.mic--compact .mic__label {
+  margin-top: 0;
+}
+
+.mic--compact .mic__label-hi {
+  font-size: 14px;
+}
+
+.mic--compact .mic__label-en {
+  font-size: 10px;
+}
+
+.mic--compact .mic__partial,
+.mic--compact .mic__statement {
+  flex-basis: 100%;
+  margin-top: 6px;
+}
+
+/* Header placement: buttons only, no label. */
+.langtoggle--compact {
+  flex: none;
+  padding: 0;
+  margin-left: auto;
+}
+
+.langtoggle--compact .langtoggle__label {
+  display: none;
+}
+
+.langtoggle--compact .langtoggle__option {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* The page is a fixed-height app shell here: the transcript scrolls, the
+   composer does not. */
+body:has(.chat) {
+  height: 100dvh;
+  overflow: hidden;
+}

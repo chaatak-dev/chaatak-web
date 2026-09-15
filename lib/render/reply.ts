@@ -1,0 +1,159 @@
+/**
+ * Writing the assistant's turn.
+ *
+ * The model is free here: opinions, advice, follow-ups, explanation. The one
+ * thing it may not do is originate a weather value, and that is enforced by
+ * the gate afterwards rather than by asking nicely in this prompt.
+ *
+ * Every return path ends in a template when the model is unavailable or the
+ * gate rejects, so an answer always ships.
+ */
+
+import { completeWithFallback } from '../llm/chain';
+import { providers } from '../llm/index';
+import { logGateRejection } from '../log';
+import { verifyReply } from './chat-gate';
+import type { ChatContext, FactsSnapshot } from '../chat/types';
+import type { SpeechLang } from '../speech/types';
+import type { Severity } from '../weather/types';
+
+export type ReplyRequest = {
+  question: string;
+  lang: SpeechLang;
+  context: ChatContext;
+  facts: FactsSnapshot | null;
+  places: string[];
+  severity: Severity | 'unknown';
+  severityStrings?: string[];
+  gazetteer?: Set<string>;
+  /** Shipped when the model is out or the gate rejects. */
+  fallback: string;
+};
+
+export type ReplyResult = {
+  text: string;
+  /** False when the template shipped instead of the model's words. */
+  fromModel: boolean;
+  provider?: string;
+  gate: 'passed' | 'rejected' | 'skipped';
+  gateReason?: string;
+  latencyMs: number;
+};
+
+function systemPrompt(req: ReplyRequest): string {
+  const lines = [
+    'You are Chaatak, a weather assistant for rural India.',
+    '',
+    'Answer like a normal assistant. Opinions, advice, recommendations and',
+    'follow-up questions are all welcome and expected. Be warm and brief.',
+    '',
+    'MIRROR THE USER. Reply in the same language and script they used —',
+    'Devanagari in, Devanagari out; Hinglish in, Hinglish out. Match their',
+    'register: casual in, casual out. Never switch script on the user.',
+    'You may understand Haryanvi, Bhojpuri, Awadhi and Rajasthani input, but',
+    'reply in standard Hindi or English. Do not fake a dialect.',
+    '',
+    'THE ONE RULE: never state a weather number that was not given to you in',
+    'DATA below. Not an estimate, not a rounding, not a typical value. If you',
+    'were given no data, give no numbers — describe and advise instead.',
+    'Write numbers as digits exactly as they appear in DATA, never in words.',
+  ];
+
+  if (req.severityStrings?.length) {
+    lines.push(
+      '',
+      'A WARNING IS IN FORCE. Your reply MUST begin with this exact text:',
+      `  ${req.severityStrings[0]}`,
+      'Do not reword it. Do not soften it. After it, never suggest that',
+      'conditions are fine or that the activity is safe.',
+    );
+  }
+
+  lines.push('', 'Keep it to two or three sentences.');
+  return lines.join('\n');
+}
+
+function userPrompt(req: ReplyRequest): string {
+  const parts: string[] = [];
+
+  if (req.context.standing) {
+    const s = req.context.standing;
+    parts.push(
+      `CONTEXT: the conversation is about ${s.place ?? 'no place yet'}` +
+        `${s.variable !== 'all' ? `, specifically ${s.variable}` : ''}.`,
+    );
+  }
+
+  for (const turn of req.context.history) {
+    parts.push(`${turn.role === 'user' ? 'User' : 'You'}: ${turn.text}`);
+  }
+
+  parts.push(
+    req.facts
+      ? `DATA (the only numbers you may use):\n${JSON.stringify(req.facts)}`
+      : 'DATA: none was fetched for this turn. Use no numbers.',
+  );
+  parts.push(`User: ${req.question}`);
+  return parts.join('\n\n');
+}
+
+export async function writeReply(req: ReplyRequest): Promise<ReplyResult> {
+  const started = Date.now();
+
+  const { result } = await completeWithFallback(providers(), {
+    system: systemPrompt(req),
+    user: userPrompt(req),
+    temperature: 0.4,
+    maxTokens: 400,
+    timeoutMs: 12_000,
+  });
+
+  if (result.kind !== 'ok') {
+    // Every provider out. The user gets the template and never learns why.
+    return {
+      text: req.fallback,
+      fromModel: false,
+      gate: 'skipped',
+      latencyMs: Date.now() - started,
+    };
+  }
+
+  const text = result.text.trim();
+  const verdict = verifyReply(text, {
+    facts: req.facts,
+    places: req.places,
+    severity: req.severity,
+    severityStrings: req.severityStrings,
+    gazetteer: req.gazetteer,
+  });
+
+  if (!verdict.ok) {
+    // Kept with the text, so an over-strict gate can be told apart from a
+    // model actually misbehaving.
+    logGateRejection({
+      reason: verdict.reason,
+      detail: verdict.detail,
+      rejectedText: text,
+      grounded: req.facts !== null,
+      severity: req.severity,
+      lang: req.lang,
+    });
+
+    return {
+      text: req.fallback,
+      fromModel: false,
+      provider: result.provider,
+      gate: 'rejected',
+      gateReason: verdict.reason,
+      latencyMs: Date.now() - started,
+    };
+  }
+
+  return {
+    text,
+    fromModel: true,
+    provider: result.provider,
+    gate: 'passed',
+    latencyMs: Date.now() - started,
+  };
+}

@@ -22,12 +22,15 @@ const OPTIONS: { value: SpeechLang; hi: string; en: string }[] = [
 export function LangToggle({
   value,
   onChange,
+  compact,
 }: {
   value: SpeechLang;
   onChange: (lang: SpeechLang) => void;
+  /** Header placement in chat: the label is dropped, the buttons shrink. */
+  compact?: boolean;
 }) {
   return (
-    <div className="langtoggle">
+    <div className={`langtoggle${compact ? ' langtoggle--compact' : ''}`}>
       <p className="langtoggle__label" id="voice-language">
         <span lang="hi" className="langtoggle__label-hi">
           आवाज़ की भाषा

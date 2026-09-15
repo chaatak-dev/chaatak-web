@@ -125,3 +125,96 @@ test('empty or punctuation-only input asks for a place', async () => {
     assert.equal(r.reason, 'noPlace');
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* Regressions: a place is claimed on evidence, never by elimination    */
+/* ------------------------------------------------------------------ */
+
+test('a verb left standing is never mistaken for a place', async () => {
+  // This one shipped. "क्या आज घर से निकलूँ?" left निकलूँ — a verb — as the
+  // longest leftover, the geocoder matched it to somewhere in Nepal, and the
+  // user got a confident answer about the wrong country. Same failure class
+  // as the transliteration trials, through a different door.
+  assert.equal(extractPlace('क्या आज घर से निकलूँ'), null);
+  assert.equal(await patternParser.parse('क्या आज घर से निकलूँ', HI), null);
+});
+
+test('an advisory question is not mined for a place name', async () => {
+  // "क्रिकेट खेल सकता हूँ" is not a village.
+  assert.equal(extractPlace('क्या मैं आज क्रिकेट खेल सकता हूँ'), null);
+});
+
+test('a contextual follow-up defers instead of inventing a place', async () => {
+  // "और अगले दिन?" carries no place and a relative time this layer cannot
+  // resolve, so it belongs to the layer that can.
+  assert.equal(await patternParser.parse('और अगले दिन', HI), null);
+});
+
+test('a locative particle is what marks a place', async () => {
+  assert.equal(extractPlace('बाराबंकी में कल बारिश होगी'), 'बाराबंकी');
+  assert.equal(extractPlace('मुंबई का मौसम'), 'मुंबई');
+  assert.equal(extractPlace('weather in Ghaziabad'), 'Ghaziabad');
+});
+
+test('a recognised name is claimed even without a locative', async () => {
+  // The gazetteer's second job: telling a place from a verb when position
+  // gives no hint at all.
+  assert.equal(extractPlace('अभी जयपुर'), 'जयपुर');
+});
+
+test('a locative alone does not make a sentence about weather', async () => {
+  // "Python में list कैसे sort करें?" has a perfectly good में. Claiming
+  // Python as a place here meant the scope check never ran and Chaatak
+  // answered a coding question — with an Australian timezone attached.
+  assert.equal(await patternParser.parse('Python में list कैसे sort करें', HI), null);
+});
+
+test('a keyword immediately before a particle is not a place', async () => {
+  // "ऑरेंज अलर्ट का मतलब" — अलर्ट sits right before का, so there is no place
+  // here at all. Reaching past it to ऑरेंज sent a definition question off to
+  // fetch a forecast.
+  assert.equal(extractPlace('ऑरेंज अलर्ट का मतलब क्या है'), null);
+});
+
+test('an unevidenced leftover always defers — it is never guessed at', async () => {
+  /*
+   * The general shape, not the specific bug.
+   *
+   * Place resolution is the soft spot in this system and it has bitten twice
+   * now: once transliterating जयपुर into Jayapura, Indonesia, and once letting
+   * the verb निकलूँ stand as a place and reporting Nepal's weather. Both times
+   * the failure was silent and confident, which is the worst combination.
+   *
+   * So the invariant is a shape, not a list: a token with no positive
+   * evidence behind it — no locative particle, not the whole message, not a
+   * recognised name — must defer to a layer that can judge. Never guess.
+   */
+  const unevidenced = [
+    'क्या आज घर से निकलूँ',       // verb
+    'क्या मैं आज क्रिकेट खेल सकता हूँ', // activity
+    'आज दवा छिड़कनी चाहिए',        // verb phrase
+    'और अगले दिन',                 // relative time
+    'क्या आज छत पर कपड़े सुखाऊँ',   // verb phrase
+    'kal match dekh sakta hoon',   // Hinglish activity
+  ];
+
+  for (const text of unevidenced) {
+    assert.equal(
+      extractPlace(text),
+      null,
+      `must not claim a place from: ${text}`,
+    );
+    assert.equal(
+      await patternParser.parse(text, HI),
+      null,
+      `must defer rather than answer: ${text}`,
+    );
+  }
+});
+
+test('evidence, when present, is still honoured', async () => {
+  // The counterweight: deferring everything would be its own failure.
+  assert.equal(extractPlace('बाराबंकी में बारिश'), 'बाराबंकी');
+  assert.equal(extractPlace('बाराबंकी'), 'बाराबंकी');
+  assert.equal(extractPlace('अभी मुंबई'), 'मुंबई');
+});

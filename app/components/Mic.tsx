@@ -22,7 +22,7 @@ const LABELS: Record<
   Exclude<MicState, 'unsupported'>,
   { hi: string; en: string }
 > = {
-  idle: { hi: 'जगह का नाम बोलें', en: 'Say a place name' },
+  idle: { hi: 'बोलकर पूछें', en: 'Ask by voice' },
   listening: { hi: 'सुन रहे हैं…', en: 'Listening' },
   processing: { hi: 'जाँच रहे हैं…', en: 'Checking' },
   failed: { hi: 'सुनाई नहीं दिया', en: 'Not heard' },
@@ -51,9 +51,15 @@ type Props = {
   partial?: string;
   onStart: () => void;
   onStop: () => void;
+  /**
+   * Chat places the mic beside a text input rather than alone on the page, so
+   * it takes the 52px paired size instead of the 74px standalone one. The
+   * brand rule sizes it by what it sits next to, not by where it appears.
+   */
+  compact?: boolean;
 };
 
-export function Mic({ state, lang, partial, onStart, onStop }: Props) {
+export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
   // Nothing at all: no control, no explanation, no apology.
   if (state === 'unsupported') return null;
 
@@ -62,7 +68,7 @@ export function Mic({ state, lang, partial, onStart, onStop }: Props) {
   const inert = state === 'processing' || state === 'denied';
 
   return (
-    <div className={`mic mic--${state}`}>
+    <div className={`mic mic--${state}${compact ? ' mic--compact' : ''}`}>
       <button
         type="button"
         className="mic__button"
@@ -89,9 +95,9 @@ export function Mic({ state, lang, partial, onStart, onStop }: Props) {
 
       {state === 'failed' ? (
         <p className="mic__statement">
-          <span lang="hi">कुछ सुनाई नहीं दिया। फिर से बोलें, या नीचे लिखें।</span>
+          <span lang="hi">कुछ सुनाई नहीं दिया। फिर से बोलें, या लिखकर पूछें।</span>
           <span className="mic__statement-en">
-            Nothing was heard. Try again, or type below.
+            Nothing was heard. Try again, or type your question.
           </span>
         </p>
       ) : null}
