@@ -7,6 +7,7 @@
  */
 
 import { TTL, cached } from '../cache';
+import { llmParser } from './llm';
 import { patternParser } from './patterns';
 import type { ParseContext, ParseResult, Parser } from './types';
 
@@ -20,11 +21,14 @@ function normaliseForKey(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[।?!.]+$/u, '');
 }
 
-/** The LLM parser, registered by the provider layer. Absent until then. */
-let llmParser: Parser | null = null;
+/**
+ * The LLM layer, swappable for tests so the orchestrator can be exercised
+ * without a network call.
+ */
+let exceptionParser: Parser | null = llmParser;
 
 export function registerLlmParser(parser: Parser | null): void {
-  llmParser = parser;
+  exceptionParser = parser;
 }
 
 export type ParseOutcome = {
@@ -53,7 +57,7 @@ export async function parseQuery(
     TTL.parse,
     async () => {
       servedFromCache = false;
-      if (!llmParser) {
+      if (!exceptionParser) {
         return {
           kind: 'cannotParse' as const,
           reason: 'notUnderstood' as const,
@@ -64,7 +68,7 @@ export async function parseQuery(
           servedBy: 'pattern' as const,
         };
       }
-      const parsed = await llmParser.parse(text, ctx);
+      const parsed = await exceptionParser.parse(text, ctx);
       return (
         parsed ?? {
           kind: 'cannotParse' as const,

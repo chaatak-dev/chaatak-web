@@ -2,11 +2,17 @@
  * A seed gazetteer of Indian places, in both scripts.
  *
  * SCOPE, deliberately: this is a small verifiable list of state names and
- * large cities, not a district register. IMD's own district list — with the
- * Obj_ids the warning API is keyed on — arrives with the IMD adapter in
- * Phase 4, and that is the authoritative source. Inventing 800 district
- * spellings from memory would put wrong place names into a system whose whole
- * argument is that it does not invent things.
+ * large cities, not a district register. Inventing 800 district spellings from
+ * memory would put wrong place names into a system whose whole argument is
+ * that it does not invent things. Partial and honest beats complete and
+ * fabricated.
+ *
+ * SUPERSEDED IN PHASE 4. IMD's own district list — with the Obj_ids the
+ * warning API is keyed on — is the authoritative source. When the IMD adapter
+ * lands, replace the contents of this file with that list and delete the seed
+ * below; do not merge the two, because a hand-written entry that disagrees
+ * with IMD's spelling is exactly the kind of quiet wrongness this file exists
+ * to avoid.
  *
  * What it is used for:
  *   - the verification gate's unknownPlace check, which can only catch a

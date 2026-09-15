@@ -1,33 +1,68 @@
 'use client';
 
 /**
- * The weather query page.
+ * The weather query page: ask by voice or by typing, hear the answer back.
  *
- * Type a place, get current conditions and a three-day outlook, each with the
- * source, the endpoint and the upstream timestamp under it. A place that does
- * not resolve gets a statement, not an error toast.
+ * The mic never changes what is said. A transcript goes to the query layer
+ * exactly as the engine produced it, and TTS reads the composed answer. There
+ * is no rewriting in between.
  *
- * The page renders values; it never computes them. Everything numeric on
- * screen arrived in the response body from /api/weather, which got it from an
+ * Nothing numeric on screen or in the spoken reply is computed here. It
+ * arrived in the response body from /api/weather, which got it from an
  * adapter, which got it from upstream.
  */
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import type { WeatherResponse } from '@/lib/weather/api';
 import type { NoData } from '@/lib/weather/types';
+import type { MicState, SpeechLang } from '@/lib/speech/types';
+import { composeAnswer } from '@/lib/speech/compose';
+import { pickSource } from '@/lib/speech/source';
 import { placeLine } from '@/lib/format';
 import { CurrentConditions } from './components/CurrentConditions';
+import { LangToggle } from './components/LangToggle';
 import { LogoMark } from './components/LogoMark';
+import { Mic } from './components/Mic';
 import { NoDataField } from './components/NoDataField';
 import { Outlook } from './components/Outlook';
 import { WarningSlot } from './components/WarningSlot';
 
 type Status = 'idle' | 'loading' | 'done';
 
+const LANG_KEY = 'chaatak:voice-lang';
+const LANG_EVENT = 'chaatak:voice-lang-changed';
+
 /**
- * Our own failure, not a source's: the request to our route did not complete.
- * Named honestly so nobody reads it as Open-Meteo having gone quiet.
+ * Browser capability and the stored language preference are external values,
+ * not component state. Reading them through useSyncExternalStore gives the
+ * server a defined snapshot — so there is no hydration mismatch — and avoids
+ * setting state from an effect just to learn what the browser can do.
  */
+const noopSubscribe = () => () => {};
+
+function subscribeLang(onChange: () => void): () => void {
+  window.addEventListener(LANG_EVENT, onChange);
+  return () => window.removeEventListener(LANG_EVENT, onChange);
+}
+
+function storedLang(): SpeechLang {
+  try {
+    return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'hi';
+  } catch {
+    // Private mode, or site data blocked. Hindi is the default either way.
+    return 'hi';
+  }
+}
+
+function readerZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** Our own failure, not a source's. Named so it is not read as Open-Meteo. */
 function routeFailure(): NoData {
   return {
     kind: 'noData',
@@ -42,47 +77,135 @@ function routeFailure(): NoData {
   };
 }
 
-/** The reader's own zone, for timestamps that are about us rather than a place. */
-function readerZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
 export default function Home() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [result, setResult] = useState<WeatherResponse | null>(null);
   const [failure, setFailure] = useState<NoData | null>(null);
+
+  const lang = useSyncExternalStore<SpeechLang>(
+    subscribeLang,
+    storedLang,
+    // Server snapshot: Hindi is primary, so it is also the pre-hydration value.
+    () => 'hi',
+  );
+  const [micState, setMicState] = useState<MicState>('idle');
+  const [partial, setPartial] = useState('');
+  const [speaking, setSpeaking] = useState(false);
+
+  const sessionRef = useRef<{ stop(): void } | null>(null);
+  const speakingRef = useRef<{ cancel(): void } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setStatus('loading');
-    setFailure(null);
+  // Capability decides whether the mic renders at all. A browser with no
+  // recogniser shows no control rather than one that cannot work.
+  const canRecognise = useSyncExternalStore(
+    noopSubscribe,
+    () => pickSource('recognise') !== null,
+    () => false,
+  );
+  const canSpeak = useSyncExternalStore(
+    noopSubscribe,
+    () => pickSource('speak') !== null,
+    () => false,
+  );
 
+  const chooseLang = useCallback((next: SpeechLang) => {
     try {
-      const res = await fetch(`/api/weather?place=${encodeURIComponent(query)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setResult((await res.json()) as WeatherResponse);
+      localStorage.setItem(LANG_KEY, next);
     } catch {
-      setResult(null);
-      setFailure(routeFailure());
-    } finally {
-      setStatus('done');
+      /* preference simply does not persist */
     }
-  }
+    window.dispatchEvent(new Event(LANG_EVENT));
+  }, []);
 
-  // Values display in the place's own zone. When no place resolved there is no
-  // such zone, and the only timestamp left is when we asked — which is about
-  // the reader, so it reads in the reader's zone.
+  const lookup = useCallback(
+    async (place: string, spoken: boolean) => {
+      setStatus('loading');
+      setFailure(null);
+
+      let response: WeatherResponse | null = null;
+      try {
+        const res = await fetch(`/api/weather?place=${encodeURIComponent(place)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        response = (await res.json()) as WeatherResponse;
+        setResult(response);
+      } catch {
+        setResult(null);
+        setFailure(routeFailure());
+      } finally {
+        setStatus('done');
+        setMicState('idle');
+      }
+
+      // Asked by voice, answered by voice — including where the value came
+      // from, so a listener who cannot read the screen still gets provenance.
+      if (spoken && response) {
+        const speaker = pickSource('speak');
+        if (speaker) {
+          speakingRef.current?.cancel();
+          const handle = speaker.speak(composeAnswer(response, lang));
+          speakingRef.current = handle;
+          setSpeaking(true);
+          void handle.done.finally(() => setSpeaking(false));
+        }
+      }
+    },
+    [lang],
+  );
+
+  const startListening = useCallback(() => {
+    const source = pickSource('recognise');
+    if (!source) return setMicState('unsupported');
+
+    speakingRef.current?.cancel();
+    setPartial('');
+    setMicState('listening');
+
+    const session = source.recognise({
+      lang,
+      onPartial: (text) => setPartial(text),
+    });
+    sessionRef.current = session;
+
+    void session.result.then((recognition) => {
+      sessionRef.current = null;
+      setPartial('');
+
+      if (recognition.kind === 'heard') {
+        // Verbatim into the query layer. No trimming, no correction.
+        setQuery(recognition.transcript);
+        void lookup(recognition.transcript, true);
+        return;
+      }
+      if (recognition.kind === 'denied') return setMicState('denied');
+      // Heard nothing, or the engine failed: say so, and the text input is
+      // right there. Never a guess at what was said.
+      setMicState('failed');
+      inputRef.current?.focus();
+    });
+  }, [lang, lookup]);
+
+  const stopListening = useCallback(() => {
+    // Entered the moment the user stops, not when the response lands. ASR is
+    // a ~1.6s round trip with no streaming endpoint behind it.
+    setMicState('processing');
+    sessionRef.current?.stop();
+  }, []);
+
+  const onSubmit = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      void lookup(query, false);
+    },
+    [lookup, query],
+  );
+
   const timeZone =
     result?.kind === 'resolved' ? result.place.timezone : readerZone();
-
-  const header =
-    result?.kind === 'resolved' ? placeLine(result.place) : null;
+  const header = result?.kind === 'resolved' ? placeLine(result.place) : null;
+  // Capability wins over the state machine: unsupported renders nothing.
+  const shownMicState: MicState = canRecognise ? micState : 'unsupported';
 
   return (
     <>
@@ -105,12 +228,24 @@ export default function Home() {
       </header>
 
       <main className="page">
+        {shownMicState !== 'unsupported' && (
+          <LangToggle value={lang} onChange={chooseLang} />
+        )}
+
+        <Mic
+          state={shownMicState}
+          lang={lang}
+          partial={partial}
+          onStart={startListening}
+          onStop={stopListening}
+        />
+
         <form className="query" onSubmit={onSubmit}>
           <label className="query__label" htmlFor="place">
             <span lang="hi" className="query__label-hi">
-              जगह का नाम लिखें
+              या जगह का नाम लिखें
             </span>
-            <span className="query__label-en">Type a place name</span>
+            <span className="query__label-en">Or type a place name</span>
           </label>
 
           <div className="query__row">
@@ -124,7 +259,6 @@ export default function Home() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ghaziabad"
               autoComplete="off"
-              autoCapitalize="words"
               enterKeyHint="search"
             />
             <button
@@ -142,7 +276,7 @@ export default function Home() {
           {status === 'idle' && (
             <section className="idle">
               <p lang="hi" className="idle__headline">
-                किसी जगह का नाम लिखें
+                बोलकर या लिखकर पूछें
               </p>
               <p className="idle__subtitle">
                 Current conditions and a three-day outlook, with the source and
@@ -168,6 +302,33 @@ export default function Home() {
 
           {status === 'done' && result?.kind === 'resolved' && (
             <>
+              {canSpeak && (
+                <div className="playback">
+                  <button
+                    type="button"
+                    className="playback__button"
+                    onClick={() => {
+                      if (speaking) {
+                        speakingRef.current?.cancel();
+                        setSpeaking(false);
+                        return;
+                      }
+                      const speaker = pickSource('speak');
+                      if (!speaker) return;
+                      const handle = speaker.speak(composeAnswer(result, lang));
+                      speakingRef.current = handle;
+                      setSpeaking(true);
+                      void handle.done.finally(() => setSpeaking(false));
+                    }}
+                  >
+                    <span lang="hi">{speaking ? 'बंद करें' : 'सुनें'}</span>
+                    <span className="playback__en">
+                      {speaking ? 'Stop' : 'Listen'}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               <WarningSlot warnings={result.warnings} timeZone={timeZone} />
               <CurrentConditions reading={result.current} timeZone={timeZone} />
               <Outlook forecast={result.outlook} timeZone={timeZone} />

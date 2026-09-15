@@ -603,3 +603,211 @@
   line-height: 1.7;
   color: var(--text-faint);
 }
+
+/* ------------------------------------------------------------------ */
+/* Voice language                                                      */
+/* ------------------------------------------------------------------ */
+
+.langtoggle {
+  padding: 18px var(--gutter) 0;
+}
+
+.langtoggle__label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.langtoggle__label-hi {
+  font-family: var(--font-deva);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.langtoggle__label-en {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.langtoggle__row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Two buttons, not a dropdown: the current choice stays visible and
+   switching costs one tap. 46px keeps the target thumb-sized. */
+.langtoggle__option {
+  flex: 1;
+  min-height: 46px;
+  padding: 0 14px;
+  /* The face comes from each option's own lang tag, not from the button. */
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--paper);
+  border: 1.5px solid var(--hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.langtoggle__option.is-active {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Microphone — the largest element on screen                          */
+/* ------------------------------------------------------------------ */
+
+.mic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 22px var(--gutter) 4px;
+  text-align: center;
+}
+
+.mic__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  padding: 0;
+  color: var(--paper);
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.mic__button:disabled {
+  cursor: default;
+}
+
+.mic__glyph {
+  width: 32px;
+  height: 32px;
+}
+
+/* Listening: a ring, so the state reads without relying on colour alone. */
+.mic--listening .mic__button {
+  box-shadow: 0 0 0 6px var(--accent-tint);
+  animation: mic-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  50% {
+    box-shadow: 0 0 0 12px var(--accent-tint);
+  }
+}
+
+/* Motion is decoration here; the ring alone carries the state. */
+@media (prefers-reduced-motion: reduce) {
+  .mic--listening .mic__button {
+    animation: none;
+    box-shadow: 0 0 0 9px var(--accent-tint);
+  }
+}
+
+/* Processing and denied are both inert, and look it. */
+.mic--processing .mic__button,
+.mic--denied .mic__button {
+  color: var(--text-soft);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.mic--denied .mic__button {
+  background: var(--paper);
+  border: 1.5px solid var(--hairline);
+  color: var(--text-faint);
+}
+
+.mic__label {
+  margin-top: 12px;
+}
+
+.mic__label-hi {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mic__label-en {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.mic__partial {
+  max-width: 28rem;
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.mic__statement {
+  max-width: 28rem;
+  margin-top: 10px;
+}
+
+.mic__statement [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.mic__statement-en {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* Playback                                                            */
+/* ------------------------------------------------------------------ */
+
+.playback {
+  padding: 16px var(--gutter) 0;
+}
+
+.playback__button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  font-family: var(--font-deva);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.playback__en {
+  font-family: var(--font-latin);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
