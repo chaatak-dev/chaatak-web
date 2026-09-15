@@ -8,6 +8,7 @@
  * weather value, and IMD has no geocoder.
  */
 
+import { fixtureSource } from './fixture';
 import { openMeteo } from './open-meteo';
 import { routedPlaces } from './places';
 import type { PlaceResolver, WeatherSource } from './types';
@@ -16,6 +17,10 @@ const WEATHER_SOURCE = process.env.WEATHER_SOURCE ?? 'open-meteo';
 
 const SOURCES: Record<string, WeatherSource> = {
   'open-meteo': openMeteo,
+  // Selected only by an explicit WEATHER_SOURCE=fixture. Open-Meteo has no
+  // warning product, so the alert pipeline is exercised against this until
+  // IMD lands.
+  fixture: fixtureSource,
 };
 
 export function weatherSource(): WeatherSource {

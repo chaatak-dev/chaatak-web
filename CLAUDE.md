@@ -221,9 +221,38 @@ Free-text narrative may be machine-translated; the severity taxonomy may not.
 MT can soften "extremely heavy rain" into something milder — a safety failure.
 
 **Alert dispatch.** A scheduled job polls district warnings independently of
-user activity, matches against subscribed districts, and dispatches.
-Deduplicate on `(userId, warningId)` with an idempotency table — polling every
-few minutes will otherwise send the same warning repeatedly.
+user activity, matches against subscribed districts, and dispatches. The
+pipeline never calls a model: severity comes from the template catalogue
+verbatim, in the subscriber's language, with provenance.
+
+Deduplication is on `(subscriberId, dispatchKey)` in Postgres, where
+`dispatchKey = warningId:fingerprint` and the fingerprint covers only the
+**material** fields — severity, hazard code, district, and the validity window
+truncated to the hour.
+
+> ⚠ **`issuedAt` is deliberately excluded from the fingerprint, and this is an
+> ASSUMPTION about IMD that must be verified against real bulletins when the
+> key lands.** The assumption: IMD restamps `issuedAt` on every reissue,
+> including unchanged ones. If that holds, including it would mean ~80
+> dispatches for one six-hour warning polled every five minutes. If it does
+> **not** hold — if IMD keeps `issuedAt` stable and signals a reissue some
+> other way — then this dedup is wrong in the direction of **silence**, which
+> is the dangerous direction. Watch one real warning across several polls
+> before trusting it. The per-poll log prints every fingerprint with a
+> `changed` flag precisely so a genuine reissue can be told from a
+> restatement.
+
+The claim is an atomic conditional upsert, never a read followed by a write,
+so concurrent invocations produce one dispatch. Claims are **leases**: a runner
+that claims and then dies would otherwise block the dispatch forever, and a
+silently dropped warning is the worst outcome this system has. The honest
+guarantee is therefore **at-least-once**, not exactly-once — duplicating a
+cyclone warning beats dropping it.
+
+A warning that vanishes from the feed **before** its window closes was
+withdrawn, and dispatches an all-clear. One that vanishes **after** simply
+expired, and dispatches nothing — expiry is expected, and an all-clear for it
+is the kind of noise that trains people to ignore us.
 
 **Secrets stay server-side.** All third-party calls (IMD, Bhashini, LLM) go
 through Next.js API routes. No API key ever reaches the browser.
@@ -342,28 +371,35 @@ Two languages only — Hindi and English — tested on real accented speech.
 **Done when:** you can speak a question in Hindi and hear the answer spoken
 back, on a phone, without touching the keyboard.
 
-### Phase 3 — Districts and alerts
-Saved districts (localStorage is fine at this stage — no auth yet). The alert
-daemon as a scheduled job. Idempotency table keyed on `(user, warningId)`.
-Web Push and Telegram dispatch.
-**Done when:** a warning fires and reaches a phone without anyone asking for
-it, and firing the job twice does not send it twice.
+### Phase 3 — Chat ✅
+Message list, turn memory with a bounded context window, advisory answers
+grounded in verified values, and the scope boundary. The gate extended for
+conversation. Done.
 
-### Phase 4 — IMD swap-in
+### Phase 4 — Districts and alerts ✅
+Saved districts, the alert daemon as a cron-driven endpoint, idempotency on
+`(subscriberId, dispatchKey)` in Postgres, Web Push and Telegram dispatch,
+and the withdrawal all-clear. Built against a fixture warning source, since
+Open-Meteo has no warning product; IMD swaps in behind the same adapter.
+**Done when:** a warning reaches a phone without anyone asking, running the
+job twice sends it once, a withdrawn warning sends an all-clear and an
+expired one sends nothing. Done.
+
+### Phase 5 — IMD swap-in
 When the API key arrives: implement `WeatherSource` against IMD, build the
 location resolver (lat/lon → district Obj_id → nearest station) and the
 warning-code template catalogue. Change one config value to switch sources.
 **Done when:** the same UI shows IMD data with IMD provenance, and nothing
 above the adapter layer changed.
 
-### Phase 5 — Polish
+### Phase 6 — Polish
 Dark mode. Offline behaviour — cache the last warning locally and show it
 with its timestamp and its age. Loading and empty states. Accessibility pass
 at 360px.
 **Done when:** you can turn off wifi and the app still shows the last known
 warning, honestly labelled as stale.
 
-### Phase 6 — Demo
+### Phase 7 — Demo
 Auth, chat history and settings only if time remains; none of them change
 whether this works. Rehearse the demo path. Record the video: a spoken
 question in Hindi returning a real IMD value with a visible issue time, then
