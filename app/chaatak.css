@@ -126,7 +126,7 @@
   padding: 0 14px;
   font-size: 17px;
   background: var(--paper);
-  border: 1.5px solid var(--hairline);
+  border: 1.5px solid var(--border-control);
   border-radius: var(--radius);
 }
 
@@ -395,8 +395,8 @@
 
 .absence--nowarning {
   /* Derived from an existing token rather than a new hex value. */
-  background: color-mix(in srgb, var(--sev-none) 10%, var(--paper));
-  border-left: 4px solid var(--sev-none);
+  background: color-mix(in srgb, var(--sev-none) 12%, var(--paper));
+  border-left: 4px solid var(--sev-none-line);
 }
 
 .absence__label {
@@ -651,7 +651,7 @@
   font-weight: 600;
   color: var(--text);
   background: var(--paper);
-  border: 1.5px solid var(--hairline);
+  border: 1.5px solid var(--border-control);
   border-radius: var(--radius);
   cursor: pointer;
 }
@@ -727,7 +727,7 @@
 
 .mic--denied .mic__button {
   background: var(--paper);
-  border: 1.5px solid var(--hairline);
+  border: 1.5px solid var(--border-control);
   color: var(--text-faint);
 }
 
@@ -958,7 +958,7 @@
   padding: 0 14px;
   font-size: 17px;
   background: var(--paper);
-  border: 1.5px solid var(--hairline);
+  border: 1.5px solid var(--border-control);
   border-radius: var(--radius);
 }
 
@@ -1069,4 +1069,153 @@
 body:has(.chat) {
   height: 100dvh;
   overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme toggle                                                        */
+/* ------------------------------------------------------------------ */
+
+.themetoggle {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.themetoggle__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  font-size: 14px;
+  color: var(--text-soft);
+  background: var(--paper);
+  border: 1.5px solid var(--border-control);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.themetoggle__option.is-active {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Stale                                                               */
+/*                                                                     */
+/* Same slot and same weight as a severity band. A cached value shown  */
+/* without its age is the same failure as a number shown without its   */
+/* source, so it gets the same treatment — never a corner badge.       */
+/* ------------------------------------------------------------------ */
+
+.stale {
+  margin-bottom: 16px;
+  padding: 14px var(--gutter) 15px;
+  background: var(--surface);
+  /* Grey, not a severity colour. Colour means "this is current". */
+  border-left: 4px solid var(--text-soft);
+}
+
+.stale__label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+}
+
+.stale__label-hi {
+  font-family: var(--font-deva);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.stale__label-en {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.stale__statement {
+  margin-top: 8px;
+  font-family: var(--font-deva);
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+
+.stale__statement-en {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+/* The age sits beside the issue time, not instead of it: an absolute time
+   alone lets stale read as current, an age alone hides which bulletin. */
+.stale__provenance {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 2px solid var(--text-soft);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.stale--expired {
+  border-left-color: var(--text-soft);
+}
+
+/* The masthead carries the mark, the place, and two preference controls. At
+   360px that is more than fits, so the text block truncates instead of being
+   overrun — a logo sitting under a button is worse than an ellipsis. */
+.masthead__inner {
+  flex-wrap: nowrap;
+}
+
+.masthead__where {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.masthead__place,
+.masthead__brand-hi,
+.masthead__brand-en {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.langtoggle--compact,
+.themetoggle {
+  flex: 0 0 auto;
+}
+
+/* Below 420px the controls shrink rather than the mark. */
+@media (max-width: 420px) {
+  .langtoggle--compact .langtoggle__option {
+    min-height: 34px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .themetoggle__option {
+    width: 32px;
+    min-height: 34px;
+    font-size: 13px;
+  }
+
+  .masthead__inner {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+
+  /* The English subtitle is the first thing to go: चातक alone still names
+     the product, and the controls need the room more. */
+  .masthead__brand-en {
+    display: none;
+  }
 }

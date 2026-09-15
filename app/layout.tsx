@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Instrument_Sans, Noto_Sans_Devanagari } from 'next/font/google';
+import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 import './chaatak.css';
 
@@ -29,7 +30,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#FFFDF9',
+  // The browser chrome follows the palette, so a dark page does not sit under
+  // a bright status bar at 3am.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FFFDF9' },
+    { media: '(prefers-color-scheme: dark)', color: '#16181A' },
+  ],
 };
 
 export default function RootLayout({
@@ -42,6 +48,15 @@ export default function RootLayout({
       lang="en"
       className={`${instrumentSans.variable} ${notoSansDevanagari.variable}`}
     >
+      <head>
+        {/*
+          Applies the stored theme before first paint. Without it the page
+          renders light and then corrects itself — trivial in daylight, and
+          genuinely unpleasant at 3am, which is when a warning is most likely
+          to wake someone.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
       <body>{children}</body>
     </html>
   );

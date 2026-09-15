@@ -17,8 +17,18 @@ import type { ChatReply } from './api/chat/route';
 import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
 import { pickSource } from '@/lib/speech/source';
-import { placeLine } from '@/lib/format';
+import { formatStamp, placeLine } from '@/lib/format';
+import {
+  isOffline,
+  readCache,
+  staleness,
+  subscribeCache,
+  subscribeOnline,
+  writeCache,
+} from '@/lib/offline/cache';
 import { ChatTurn } from './components/ChatTurn';
+import { StaleBand } from './components/StaleBand';
+import { ThemeToggle } from './components/ThemeToggle';
 import { LangToggle } from './components/LangToggle';
 import { LogoMark } from './components/LogoMark';
 import { Mic } from './components/Mic';
@@ -120,9 +130,29 @@ export default function Chat() {
     () => false,
   );
 
+  /*
+   * Offline status and the cached answer are read synchronously from the
+   * browser, never inferred from a failed request. Waiting for a fetch to time
+   * out before admitting we are offline would show a cached answer looking
+   * current for three seconds first — the same lie, shorter.
+   */
+  const offline = useSyncExternalStore(subscribeOnline, isOffline, () => false);
+  const cached = useSyncExternalStore(subscribeCache, readCache, () => null);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
+
+  // Registers the offline shell. Without it a cold start with no network
+  // reaches the browser's error page and the cached warning is never seen —
+  // which would make "show the last known warning offline" impossible.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    void navigator.serviceWorker.register('/sw.js').catch(() => {
+      // No shell cache. The app still works online; it just cannot cold-start
+      // offline. Not worth telling the user about.
+    });
+  }, []);
 
   const chooseLang = useCallback((next: SpeechLang) => {
     try {
@@ -179,6 +209,19 @@ export default function Chat() {
             grounding: reply.grounding,
           },
         ]);
+
+        // Keep the last answer, with both timestamps. Age is never stored —
+        // it is computed on read, so it cannot go stale itself.
+        if (reply.grounding) {
+          writeCache({
+            text: reply.text,
+            lang: reply.lang,
+            issuedAt: reply.grounding.provenance.issuedAt,
+            cachedAt: new Date().toISOString(),
+            grounding: reply.grounding,
+            validTo: null,
+          });
+        }
 
         if (spoken) speak(reply.text, reply.lang);
       } catch {
@@ -258,12 +301,78 @@ export default function Chat() {
           {shownMicState !== 'unsupported' && (
             <LangToggle value={lang} onChange={chooseLang} compact />
           )}
+          <ThemeToggle />
         </div>
       </header>
 
       <main className="chat">
-        <div className="chat__scroll" aria-live="polite">
-          {messages.length === 0 ? (
+        {/*
+          role="log" announces ADDITIONS only. A plain aria-live region on a
+          growing transcript re-reads the whole conversation on every turn,
+          which is unusable the moment there is more than one exchange.
+        */}
+        <div
+          className="chat__scroll"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Conversation"
+        >
+          {messages.length === 0 && offline && !cached ? (
+            /*
+             * Offline with nothing saved. It shows no weather content at all,
+             * because there is none — this is noData with a different cause,
+             * not a degraded answer.
+             */
+            <section className="absence absence--nodata" role="status">
+              <p className="absence__label">
+                <span lang="hi" className="absence__label-hi">
+                  कोई सहेजी गई जानकारी नहीं
+                </span>
+                <span className="absence__label-en">Nothing saved</span>
+              </p>
+              <p lang="hi" className="absence__statement">
+                आप ऑफ़लाइन हैं और कोई पुरानी जानकारी सहेजी नहीं है। इंटरनेट आने
+                पर फिर पूछें।
+              </p>
+              <p className="absence__statement-en">
+                You are offline and nothing was saved earlier. Ask again when
+                you have a connection.
+              </p>
+            </section>
+          ) : messages.length === 0 && cached ? (
+            /*
+             * Something was saved. It renders on first paint, above the value
+             * and at the same weight as a severity band — never as a badge.
+             */
+            <>
+              <StaleBand
+                lang={lang}
+                ageMinutes={staleness(cached).ageMinutes}
+                expired={staleness(cached).expired}
+                offline={offline}
+                source={cached.grounding.provenance.source}
+                issuedAtLabel={formatStamp(
+                  cached.issuedAt,
+                  cached.grounding.place.timezone,
+                )}
+              />
+              {!staleness(cached).expired && (
+                <ChatTurn
+                  message={{
+                    id: 'cached',
+                    role: 'assistant',
+                    text: cached.text,
+                    lang: cached.lang,
+                    at: cached.cachedAt,
+                    // The severity colour is dropped while stale: colour means
+                    // "this is current", and this is not.
+                    grounding: { ...cached.grounding, severity: 'unknown' },
+                  }}
+                />
+              )}
+            </>
+          ) : messages.length === 0 ? (
             <section className="chat__empty">
               <p lang="hi" className="chat__empty-headline">
                 मौसम के बारे में कुछ भी पूछें

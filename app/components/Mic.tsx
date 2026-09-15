@@ -80,7 +80,13 @@ export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
         <MicGlyph />
       </button>
 
-      <p className="mic__label">
+      {/*
+        The state is carried visually by a pulsing ring and a colour, neither
+        of which reaches a screen reader. Listening and processing especially
+        need announcing: without them there is no signal that anything is
+        happening at all.
+      */}
+      <p className="mic__label" role="status" aria-live="polite">
         <span lang="hi" className="mic__label-hi">
           {label.hi}
         </span>

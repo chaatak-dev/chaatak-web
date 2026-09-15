@@ -19,18 +19,33 @@
   --surface:          #F1EFE8;
   --text:             #17191A;
   --text-soft:        #5F5E5A;
-  --text-faint:       #888780;
-  --hairline:         #D3D1C7;
+  --text-faint:       #6C6C66;   /* was #888780 — 3.55:1 on paper, failed */
+  --hairline:         #D3D1C7;   /* decorative dividers */
+  --border-control:   #96917A;   /* 3.10:1: an input edge is a UI boundary */
 
-  /* IMD severity scale */
+  /* IMD severity scale.
+     Each severity has TWO values, and they are not interchangeable:
+
+       --sev-X       the band background, with --sev-X-ink sitting on it
+       --sev-X-line  the 2px provenance rule, drawn ON the page
+
+     In light mode they are identical, which is why one token appeared to be
+     enough. On a dark ground they pull in opposite directions — the band has
+     to dim so a 3am warning is not a flashbang, while the rule has to
+     brighten to survive near-black. Assuming one value could do both shipped
+     a red provenance rule at 1.72:1, i.e. invisible. See contrast.test.ts. */
   --sev-none:         #639922;  /* green  — no warning   */
-  --sev-none-ink:     #173404;
+  --sev-none-ink:     #122803;  /* was #173404 — 4.00:1 on the band, failed */
+  --sev-none-line:    #639922;  /* 3.38:1 on paper */
   --sev-watch:        #FAC775;  /* yellow — be aware     */
   --sev-watch-ink:    #412402;
+  --sev-watch-line:   #CB8007;  /* pale yellow was 1.53:1 on paper — invisible */
   --sev-alert:        #EF9F27;  /* orange — take action  */
   --sev-alert-ink:    #412402;
+  --sev-alert-line:   #CC800F;  /* pale orange was 2.14:1 on paper */
   --sev-warning:      #A32D2D;  /* red    — take action now */
   --sev-warning-ink:  #FCEBEB;
+  --sev-warning-line: #A32D2D;  /* 6.96:1 on paper */
 
   /* type */
   --font-latin:       'Instrument Sans', system-ui, sans-serif;
@@ -58,22 +73,71 @@
   --cloud-deep:       #6A6D6F;
   --text:             #EDEBE6;
   --text-soft:        #A8A6A0;
-  --text-faint:       #74736E;
-  --hairline:         #32363A;
+  --text-faint:       #8B8A84;   /* was #74736E — 3.75:1 on paper, failed */
+  --hairline:         #424951;   /* was #32363A — 1.46:1, effectively absent */
+  --border-control:   #5F676F;   /* 3.10:1: an input edge is a UI boundary */
   --accent:           #5DCAA5;
   --accent-tint:      #0B3B30;
 
-  /* severity keeps its hue but drops luminance so a 3am alert
-     is readable without being a flashbang */
-  --sev-none:         #3B6D11;
+  /* Bands keep their hue and drop luminance, so a 3am alert is readable
+     without being a flashbang. Every band here sits at lower absolute
+     luminance than its light counterpart, and the test asserts it.
+
+     Lines go the other way: they are drawn on a near-black page and have to
+     be bright enough to read there. Same hue, opposite direction. */
+  --sev-none:         #3B6D11;   /* ink 5.43:1 */
   --sev-none-ink:     #EAF3DE;
-  --sev-watch:        #854F0B;
+  --sev-none-line:    #407512;   /* 3.20:1 on paper — was 2.87:1 */
+  --sev-watch:        #854F0B;   /* ink 5.87:1 */
   --sev-watch-ink:    #FAEEDA;
-  --sev-alert:        #BA7517;
+  --sev-watch-line:   #975A0D;   /* 3.21:1 on paper — was 2.65:1 */
+  --sev-alert:        #975F13;   /* was #BA7517 — ink was 3.24:1, now 4.62:1 */
   --sev-alert-ink:    #FAEEDA;
-  --sev-warning:      #791F1F;
+  --sev-alert-line:   #BA7517;   /* 4.78:1 on paper */
+  --sev-warning:      #791F1F;   /* ink 8.98:1 */
   --sev-warning-ink:  #FCEBEB;
+  --sev-warning-line: #C23232;   /* 3.22:1 on paper — was 1.72:1, invisible */
 }
+
+/* System preference. Same values as the block above, applied when the user
+   has expressed no explicit choice. A [data-theme='light'] attribute opts
+   back out, so the manual toggle wins in both directions. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper:            #16181A;
+    --surface:          #1F2224;
+    --ink:              #FFFDF9;
+    --cloud:            #4A4D4F;
+    --cloud-deep:       #6A6D6F;
+    --text:             #EDEBE6;
+    --text-soft:        #A8A6A0;
+    --text-faint:       #8B8A84;   /* was #74736E — 3.75:1 on paper, failed */
+    --hairline:         #424951;   /* was #32363A — 1.46:1, effectively absent */
+    --border-control:   #5F676F;   /* 3.10:1: an input edge is a UI boundary */
+    --accent:           #5DCAA5;
+    --accent-tint:      #0B3B30;
+
+    /* Bands keep their hue and drop luminance, so a 3am alert is readable
+       without being a flashbang. Every band here sits at lower absolute
+       luminance than its light counterpart, and the test asserts it.
+
+       Lines go the other way: they are drawn on a near-black page and have to
+       be bright enough to read there. Same hue, opposite direction. */
+    --sev-none:         #3B6D11;   /* ink 5.43:1 */
+    --sev-none-ink:     #EAF3DE;
+    --sev-none-line:    #407512;   /* 3.20:1 on paper — was 2.87:1 */
+    --sev-watch:        #854F0B;   /* ink 5.87:1 */
+    --sev-watch-ink:    #FAEEDA;
+    --sev-watch-line:   #975A0D;   /* 3.21:1 on paper — was 2.65:1 */
+    --sev-alert:        #975F13;   /* was #BA7517 — ink was 3.24:1, now 4.62:1 */
+    --sev-alert-ink:    #FAEEDA;
+    --sev-alert-line:   #BA7517;   /* 4.78:1 on paper */
+    --sev-warning:      #791F1F;   /* ink 8.98:1 */
+    --sev-warning-ink:  #FCEBEB;
+    --sev-warning-line: #C23232;   /* 3.22:1 on paper — was 1.72:1, invisible */
+}
+}
+
 
 /* Devanagari runs one step larger and looser than Latin at the same
    optical size. Tag Hindi text with lang="hi" and this handles it. */

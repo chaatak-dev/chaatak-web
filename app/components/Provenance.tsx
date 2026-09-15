@@ -13,17 +13,33 @@ import type { TimeBasis } from '@/lib/weather/types';
 import { formatStamp } from '@/lib/format';
 
 /** `unknown` is for absence states, where no severity has been established. */
-export type ProvenanceSeverity = 'none' | 'watch' | 'alert' | 'warning' | 'unknown';
+export type ProvenanceSeverity =
+  | 'none'
+  | 'watch'
+  | 'alert'
+  | 'warning'
+  | 'unknown'
+  | 'stale';
 
 /** `checked` is when we asked; the rest are what the source attested. */
 export type StampBasis = TimeBasis | 'checked';
 
+/**
+ * The LINE tokens, not the band tokens.
+ *
+ * A band is a background with ink on it; a rule is drawn on the page. On a
+ * dark ground those need opposite treatments, and using the band value here
+ * shipped a red provenance rule at 1.72:1 — invisible. Light mode had the
+ * mirror of the same bug: pale yellow at 1.53:1 on white.
+ */
 const RULE_COLOUR: Record<ProvenanceSeverity, string> = {
-  none: 'var(--sev-none)',
-  watch: 'var(--sev-watch)',
-  alert: 'var(--sev-alert)',
-  warning: 'var(--sev-warning)',
+  none: 'var(--sev-none-line)',
+  watch: 'var(--sev-watch-line)',
+  alert: 'var(--sev-alert-line)',
+  warning: 'var(--sev-warning-line)',
   unknown: 'var(--text-soft)',
+  /** A cached value loses its severity colour: colour means "current". */
+  stale: 'var(--text-soft)',
 };
 
 /**

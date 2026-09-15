@@ -22,7 +22,12 @@ export function ChatTurn({ message }: { message: Message }) {
   const grounding = message.grounding;
 
   return (
-    <article className={`turn turn--${message.role}`}>
+    <article
+      className={`turn turn--${message.role}`}
+      // The visible label is Devanagari and decorative; the accessible name
+      // says who is speaking without depending on the reader knowing Hindi.
+      aria-label={isUser ? 'You said' : 'Chaatak replied'}
+    >
       <p className="turn__role" aria-hidden="true">
         {isUser ? 'आप' : 'चातक'}
       </p>
