@@ -1,0 +1,103 @@
+# Drives the Chaatak alert daemon.
+#
+# Vercel Cron on Hobby runs once a day, which is not a warning system. Until
+# the project moves to Pro, this workflow is the scheduler: the daemon itself
+# is just an authenticated endpoint, so swapping schedulers is a config change
+# rather than a rewrite.
+#
+# Deduplication lives in Postgres and is an atomic claim, so overlapping or
+# repeated runs are safe by construction — a warning dispatches once however
+# many times this fires.
+
+name: Poll IMD warnings
+
+on:
+  schedule:
+    # Every ten minutes. GitHub's scheduler is best-effort and can run late
+    # under load, so treat this as "at least every ten minutes, usually".
+    - cron: '*/10 * * * *'
+  # Fire it by hand from the Actions tab — useful on stage during a demo.
+  workflow_dispatch:
+
+# Overlap is harmless (the claim is atomic), so a slow run is never cancelled
+# halfway through dispatching.
+concurrency:
+  group: poll-warnings
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: POST /api/cron/warnings
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Optional repo variable; falls back to production.
+          BASE_URL: ${{ vars.CHAATAK_BASE_URL || 'https://chaatak.com' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          echo "Polling ${BASE_URL}/api/cron/warnings"
+
+          # Body and status are captured separately so a failure can print what
+          # the server actually said rather than just a number.
+          http_status=$(
+            curl --silent --show-error --fail-with-body \
+                 --max-time 120 \
+                 --retry 2 --retry-delay 5 --retry-connrefused \
+                 --output response.json \
+                 --write-out '%{http_code}' \
+                 --request POST "${BASE_URL}/api/cron/warnings" \
+                 --header "authorization: Bearer ${CRON_SECRET}" \
+            || true
+          )
+
+          echo "HTTP ${http_status}"
+          echo "--- response ---"
+          cat response.json 2>/dev/null || echo "(no body)"
+          echo
+          echo "----------------"
+
+          # Fail loudly. A scheduler that dies quietly is worse than no
+          # scheduler, because the dashboard still looks green while nobody is
+          # being warned about anything.
+          case "${http_status}" in
+            2*)
+              echo "::notice::Poll completed (HTTP ${http_status})"
+              ;;
+            401)
+              echo "::error::Rejected (401). CRON_SECRET here does not match the one deployed."
+              exit 1
+              ;;
+            000)
+              echo "::error::No response — the deployment was unreachable."
+              exit 1
+              ;;
+            *)
+              echo "::error::Poll failed with HTTP ${http_status}."
+              exit 1
+              ;;
+          esac
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Warning poll"
+            echo
+            if [ -f response.json ]; then
+              echo '```json'
+              head -c 4000 response.json
+              echo
+              echo '```'
+            else
+              echo "No response body — the request did not complete."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
