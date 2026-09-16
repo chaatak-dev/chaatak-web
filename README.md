@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 91 tests, no network or database needed
+npm test        # 112 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Nothing in it ever reaches the
@@ -33,7 +33,8 @@ browser — all third-party calls go through API routes.
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push |
 | `TELEGRAM_BOT_TOKEN` | Telegram dispatch |
 | `CRON_SECRET` | Guards the alert daemon endpoint |
-| `WEATHER_SOURCE` | `open-meteo` (default) or `fixture` |
+| `WEATHER_SOURCE` | what visitors see. Real sources only — `open-meteo` |
+| `WARNING_SOURCE` | what the alert daemon polls. May be `fixture` |
 
 The pooler port is deliberate: Vercel opens a connection per invocation, and a
 direct connection would exhaust the limit.
@@ -73,10 +74,15 @@ is the scheduler: it POSTs to the endpoint every ten minutes, and can be fired
 by hand from the Actions tab for a demo.
 
 **Moving to Vercel Pro is a config change, not a rewrite.** The daemon is an
-authenticated HTTP endpoint and knows nothing about who calls it.
-[`vercel.ts`](./vercel.ts) already declares the cron at `*/5 * * * *`; on Pro
-it starts working, and this workflow can simply be deleted. Vercel Cron sends
-the same `Authorization: Bearer $CRON_SECRET` header automatically.
+authenticated HTTP endpoint and knows nothing about who calls it. Add a `crons`
+entry to [`vercel.ts`](./vercel.ts) pointing at `/api/cron/warnings` and delete
+this workflow; Vercel Cron sends the same `Authorization: Bearer $CRON_SECRET`
+header automatically.
+
+**Do not add that entry back while the project is on Hobby.** A cron more
+frequent than daily does not warn — it fails the deployment. That is what kept
+production three commits behind on the Phase 3 build while `/api/cron/warnings`
+returned 404 and the rest of the site served perfectly.
 
 **Required repository secret:**
 
@@ -102,9 +108,28 @@ the dashboard stays green while nobody is being warned about anything.
 
 Open-Meteo is the development source while IMD access is pending; it has no
 warning product, so the alert pipeline is exercised against a synthetic fixture
-source (`WEATHER_SOURCE=fixture`, scenarios in `lib/weather/fixture.ts`).
-IMD swaps in behind the same `WeatherSource` interface with no change above the
-adapter layer.
+source. IMD swaps in behind the same `WeatherSource` interface with no change
+above the adapter layer.
+
+**Two selectors, deliberately.** `WEATHER_SOURCE` drives everything a visitor
+can see and **refuses synthetic sources outright**; `WARNING_SOURCE` drives the
+alert daemon alone and may be a fixture. They were one variable until
+production ran with `WEATHER_SOURCE=fixture`, which meant chaatak.com was
+prepared to show real people a warning invented to test a pipeline. The guard
+keys on the source's own `synthetic` flag rather than its name, so renaming a
+fixture cannot slip it through, and it throws rather than falling back — a
+silent fallback would hide the misconfiguration it exists to catch.
+
+For the alert demo:
+
+```
+WEATHER_SOURCE=open-meteo     # visitors get real data
+WARNING_SOURCE=fixture        # the daemon polls the fixture
+FIXTURE_SCENARIO=orange       # an orange warning, valid six hours
+```
+
+Scenarios live in `lib/weather/fixture.ts`: `quiet`, `orange`, `red`,
+`withdrawn`, `expired`.
 
 Place resolution is routed by script rather than by language: Open-Meteo's
 geocoder returns nothing at all for Devanagari, so Devanagari queries go to

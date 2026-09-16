@@ -197,6 +197,15 @@ export interface PlaceResolver {
  */
 export interface WeatherSource {
   name: string;
+  /**
+   * True for sources that return invented data.
+   *
+   * A synthetic source exists to exercise a pipeline, and must never reach a
+   * real visitor. This flag is what the user-facing selector refuses on — a
+   * property rather than a name, so renaming a fixture cannot slip it past
+   * the guard. Absent means real.
+   */
+  synthetic?: true;
   getCurrent(loc: Location): Promise<Reading | NoData>;
   getForecast(loc: Location, days: number): Promise<Forecast | NoData>;
   /**

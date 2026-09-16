@@ -15,7 +15,7 @@ import { dispatchAll } from '@/lib/alerts/dispatch';
 import { decidePoll } from '@/lib/alerts/poll';
 import { alertStore } from '@/lib/alerts/store';
 import type { PollDecision } from '@/lib/alerts/types';
-import { weatherSource } from '@/lib/weather/source';
+import { warningSource } from '@/lib/weather/source';
 import type { DistrictId } from '@/lib/weather/types';
 
 /** Never prerendered, never cached: it has side effects by definition. */
@@ -62,7 +62,9 @@ async function runPoll(): Promise<Response> {
       });
     }
 
-    const source = weatherSource();
+    // warningSource(), not weatherSource(): the daemon is the only caller
+    // allowed a synthetic source, and nothing here is rendered to a visitor.
+    const source = warningSource();
     const decisions: PollDecision[] = [];
     const perDistrict: Record<string, unknown>[] = [];
 

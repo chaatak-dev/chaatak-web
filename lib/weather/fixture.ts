@@ -107,6 +107,9 @@ function warningsFor(district: DistrictId): Warning[] {
 
 export const fixtureSource: WeatherSource = {
   name: SOURCE,
+  // Refused outright by weatherSource(); reachable only through
+  // warningSource(), which the alert daemon alone calls.
+  synthetic: true,
 
   // Current conditions and forecasts are not what this fixture is for, so it
   // defers to the real adapter rather than inventing readings.
