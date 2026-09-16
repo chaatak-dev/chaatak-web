@@ -8,6 +8,7 @@
  * the template goes instead and the user never learns a provider failed.
  */
 
+import { isConfigurationError } from '@/lib/errors';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
 import { REDIRECT } from '@/lib/chat/scope';
@@ -51,6 +52,7 @@ export async function POST(request: Request): Promise<Response> {
   const question = typeof body.question === 'string' ? body.question.trim() : '';
   if (!question) return Response.json({ error: 'no question' }, { status: 400 });
 
+  try {
   const lang: SpeechLang = body.lang === 'en' ? 'en' : 'hi';
   const history = Array.isArray(body.history) ? body.history : [];
   const standing = body.standing ?? null;
@@ -281,6 +283,41 @@ export async function POST(request: Request): Promise<Response> {
   };
 
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
+  } catch (error) {
+    /*
+     * A misconfigured deployment is reported AS a misconfiguration.
+     *
+     * This route used to let a thrown guard escape as an opaque 500, which the
+     * client rendered as "Could not reach the server. Check your connection" —
+     * sending an operator to look at their wifi while the actual fault was an
+     * environment variable. The message below names the variable, never a
+     * value, so it is safe to show and is the one thing that points at the
+     * cause.
+     */
+    const configuration = isConfigurationError(error);
+    const message = error instanceof Error ? error.message : String(error);
+
+    console.error(
+      JSON.stringify({
+        event: configuration ? 'chat.misconfigured' : 'chat.failed',
+        error: message,
+      }),
+    );
+
+    return Response.json(
+      {
+        error: {
+          kind: configuration ? 'configuration' : 'internal',
+          // Only a configuration message is surfaced. An internal error can
+          // carry anything, including things a visitor should not see.
+          detail: configuration ? message : undefined,
+        },
+      },
+      // 503, not 500: the service is unavailable until someone changes a
+      // setting, which is a different thing from a request going wrong.
+      { status: configuration ? 503 : 500, headers: { 'cache-control': 'no-store' } },
+    );
+  }
 }
 
 /** The floor the system lands on when the model is out or the gate rejects. */

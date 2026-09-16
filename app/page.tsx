@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import type { ChatReply } from './api/chat/route';
 import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
+import { classifyFailure, failureText } from '@/lib/chat/failure';
 import { pickSource } from '@/lib/speech/source';
 import { formatStamp, placeLine } from '@/lib/format';
 import {
@@ -173,6 +174,22 @@ export default function Chat() {
     void handle.done.finally(() => setSpeaking(false));
   }, []);
 
+  const reportFailure = useCallback(
+    (failure: Parameters<typeof failureText>[0], history: Message[]) => {
+      writeScrollback([
+        ...history,
+        {
+          id: nextId(),
+          role: 'assistant',
+          text: failureText(failure, lang),
+          lang,
+          at: new Date().toISOString(),
+        },
+      ]);
+    },
+    [lang],
+  );
+
   const ask = useCallback(
     async (question: string, spoken: boolean) => {
       const asked: Message = {
@@ -188,13 +205,49 @@ export default function Chat() {
       setDraft('');
       setThinking(true);
 
+      /*
+       * A failed request is classified before it is reported. "fetch threw" and
+       * "the server answered with an error" are different events, and
+       * collapsing them into one message once sent an operator to check their
+       * wifi while the fault was an environment variable.
+       */
+      let res: Response;
       try {
-        const res = await fetch('/api/chat', {
+        res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ question, lang, history, standing }),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch {
+        // Nothing came back at all, so the network really is the suspect.
+        reportFailure(
+          classifyFailure({ threw: true, online: !isOffline() }),
+          history,
+        );
+        setThinking(false);
+        setMicState('idle');
+        return;
+      }
+
+      if (!res.ok) {
+        // A response arrived. Whatever is wrong, it is not the connection.
+        let detail: string | undefined;
+        try {
+          const body = (await res.json()) as { error?: { detail?: string } };
+          detail = body.error?.detail;
+        } catch {
+          /* no body, or not JSON: the status alone still says enough */
+        }
+        reportFailure(
+          classifyFailure({ threw: false, online: true, status: res.status, detail }),
+          history,
+        );
+        setThinking(false);
+        setMicState('idle');
+        return;
+      }
+
+      try {
         const reply = (await res.json()) as ChatReply;
 
         setStanding(reply.standing);
@@ -225,25 +278,17 @@ export default function Chat() {
 
         if (spoken) speak(reply.text, reply.lang);
       } catch {
-        writeScrollback([
-          ...history,
-          {
-            id: nextId(),
-            role: 'assistant',
-            text:
-              lang === 'hi'
-                ? 'सर्वर तक नहीं पहुँच सका। इंटरनेट जाँचें और फिर कोशिश करें।'
-                : 'Could not reach the server. Check your connection and try again.',
-            lang,
-            at: new Date().toISOString(),
-          },
-        ]);
+        // The response arrived but could not be read as an answer.
+        reportFailure(
+          classifyFailure({ threw: false, online: true, status: res.status }),
+          history,
+        );
       } finally {
         setThinking(false);
         setMicState('idle');
       }
     },
-    [lang, messages, speak, standing],
+    [lang, messages, reportFailure, speak, standing],
   );
 
   const startListening = useCallback(() => {

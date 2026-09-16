@@ -18,6 +18,7 @@
  * adapter layer changes — that is the whole point of the interface.
  */
 
+import { ConfigurationError } from '../errors';
 import { fixtureSource } from './fixture';
 import { openMeteo } from './open-meteo';
 import { routedPlaces } from './places';
@@ -55,13 +56,13 @@ export function weatherSource(): WeatherSource {
     // Named a synthetic source for the user path: say exactly what to do
     // instead, because the fix is a different variable and not an obvious one.
     if (WARNING_SOURCES[name]?.synthetic) {
-      throw new Error(
+      throw new ConfigurationError(
         `WEATHER_SOURCE="${name}" is a synthetic source and must never serve visitors. ` +
           `Set WEATHER_SOURCE=open-meteo, and use WARNING_SOURCE=${name} if you ` +
           `want the alert daemon to poll the fixture.`,
       );
     }
-    throw new Error(
+    throw new ConfigurationError(
       `Unknown WEATHER_SOURCE "${name}". Known: ${known(REAL_SOURCES)}`,
     );
   }
@@ -82,7 +83,7 @@ export function warningSource(): WeatherSource {
   const source = WARNING_SOURCES[name];
 
   if (!source) {
-    throw new Error(
+    throw new ConfigurationError(
       `Unknown WARNING_SOURCE "${name}". Known: ${known(WARNING_SOURCES)}`,
     );
   }
