@@ -20,3 +20,25 @@ export class ConfigurationError extends Error {
 export function isConfigurationError(error: unknown): error is ConfigurationError {
   return error instanceof ConfigurationError;
 }
+
+/**
+ * Whether a configuration message may be shown to whoever made the request.
+ *
+ * In production it may not. A visitor can act on "the server answered with an
+ * error and it is not your connection"; they cannot act on the name of an
+ * environment variable, and handing config surface to anyone probing the site
+ * is information disclosure. This deployment named something harmless; the
+ * next one might not. The full text is still logged server-side either way.
+ *
+ * Keyed on VERCEL_ENV rather than NODE_ENV, deliberately: NODE_ENV is
+ * "production" for PREVIEW builds too, so gating on it alone would hide the
+ * detail exactly where it is most wanted. NODE_ENV is the fallback for
+ * environments that are not Vercel.
+ */
+export function mayRevealConfiguration(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const vercelEnv = env.VERCEL_ENV;
+  if (vercelEnv) return vercelEnv !== 'production';
+  return env.NODE_ENV !== 'production';
+}

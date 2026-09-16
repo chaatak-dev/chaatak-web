@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 112 tests, no network or database needed
+npm test        # 126 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Nothing in it ever reaches the
@@ -135,6 +135,25 @@ Place resolution is routed by script rather than by language: Open-Meteo's
 geocoder returns nothing at all for Devanagari, so Devanagari queries go to
 Nominatim and Latin queries stay on Open-Meteo. Transliterating first was tried
 and rejected — it fails wrongly rather than loudly.
+
+## Failure reporting
+
+Three failures, told apart and worded apart: `offline`, `unreachable` (the
+request left and nothing came back), and `serverError` (the server answered, so
+the connection is fine). The last one says so explicitly, because reporting a
+503 as "check your connection" once sent an operator to look at their wifi
+while the fault was an environment variable.
+
+A `ConfigurationError` is returned as **503** with `kind: "configuration"`. Its
+message names an environment variable and never a value, and it is **withheld
+in production** — a visitor can act on "not your connection", not on config
+surface. It is kept in preview and development, and logged at full detail
+server-side in every environment, so a production fault is still findable in
+the platform logs.
+
+Gated on `VERCEL_ENV`, not `NODE_ENV`: the latter is `production` for preview
+builds too, so gating on it alone would hide the detail exactly where it is
+most wanted.
 
 ## Verification gate
 

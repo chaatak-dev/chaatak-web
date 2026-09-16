@@ -8,7 +8,7 @@
  * the template goes instead and the user never learns a provider failed.
  */
 
-import { isConfigurationError } from '@/lib/errors';
+import { isConfigurationError, mayRevealConfiguration } from '@/lib/errors';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
 import { REDIRECT } from '@/lib/chat/scope';
@@ -297,6 +297,8 @@ export async function POST(request: Request): Promise<Response> {
     const configuration = isConfigurationError(error);
     const message = error instanceof Error ? error.message : String(error);
 
+    // Logged at full detail whatever the environment, so a production fault is
+    // still findable in the platform logs even when the response withholds it.
     console.error(
       JSON.stringify({
         event: configuration ? 'chat.misconfigured' : 'chat.failed',
@@ -308,9 +310,12 @@ export async function POST(request: Request): Promise<Response> {
       {
         error: {
           kind: configuration ? 'configuration' : 'internal',
-          // Only a configuration message is surfaced. An internal error can
-          // carry anything, including things a visitor should not see.
-          detail: configuration ? message : undefined,
+          // Withheld in production: a visitor can act on "not your
+          // connection", not on the name of an environment variable. An
+          // internal error never surfaces detail at all — it can carry
+          // anything.
+          detail:
+            configuration && mayRevealConfiguration() ? message : undefined,
         },
       },
       // 503, not 500: the service is unavailable until someone changes a
