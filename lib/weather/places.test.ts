@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isDevanagari, needsIndicGeocoder } from './places';
+import { isCorroborated, isDevanagari, needsIndicGeocoder } from './places';
+import type { Location } from './types';
 
 /**
  * Every script Chaatak accepts must reach a geocoder that can read it.
@@ -48,4 +49,56 @@ test('the Devanagari-specific check stays narrow', () => {
   assert.equal(isDevanagari('पुणे'), true);
   assert.equal(isDevanagari('சென்னை'), false);
   assert.equal(isDevanagari('Ahmedabad'), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* Corroborating a Latin geocode                                       */
+/* ------------------------------------------------------------------ */
+
+function at(name: string, admin1?: string, admin2?: string): Location {
+  return {
+    name,
+    admin1,
+    admin2,
+    country: 'India',
+    countryCode: 'IN',
+    latitude: 0,
+    longitude: 0,
+    timezone: 'Asia/Kolkata',
+    resolvedBy: 'test',
+    endpoint: '/test',
+  };
+}
+
+test('a place that names its own district is corroborated', () => {
+  // The ordinary case: the geocoder's own hierarchy backs up its answer, and
+  // no second lookup is spent.
+  assert.equal(isCorroborated(at('Ghaziabad', 'Uttar Pradesh', 'Ghaziabad')), true);
+  assert.equal(isCorroborated(at('Pune', 'Maharashtra', 'Pune')), true);
+  assert.equal(isCorroborated(at('Jaipur', 'Rajasthan', 'Jaipur district')), true);
+  assert.equal(isCorroborated(at('Delhi', 'National Capital Territory of Delhi')), true);
+});
+
+test('accents, spacing and the district suffix do not break corroboration', () => {
+  // Live spellings: Open-Meteo answers "Bara Banki" with "Bāra Bankī" in
+  // district "Barabanki". Same place, three differences, all cosmetic.
+  assert.equal(isCorroborated(at('Bāra Bankī', 'Uttar Pradesh', 'Barabanki')), true);
+  assert.equal(isCorroborated(at('Karnāl', 'Haryana', 'Karnāl District')), true);
+  assert.equal(isCorroborated(at('Cuttack', 'Odisha', 'Cuttack District')), true);
+});
+
+test('a same-named place in an unrelated district is NOT corroborated', () => {
+  // The bug this exists for. Open-Meteo's only result for "Barabanki" is a
+  // hamlet in Balangir, Odisha — roughly 900km from the Uttar Pradesh district
+  // of that name, which its index does not hold under that spelling.
+  assert.equal(isCorroborated(at('Barabānki', 'Odisha', 'Balangir')), false);
+});
+
+test('a result with nothing to corroborate against is treated as doubtful', () => {
+  // Biased toward doubt on purpose: a second cached lookup is cheap, and the
+  // alternative is shipping the wrong district under a confident provenance
+  // line naming the source and issue time.
+  assert.equal(isCorroborated(at('Mumbai', 'Maharashtra')), false);
+  assert.equal(isCorroborated(at('Somewhere')), false);
+  assert.equal(isCorroborated(at('')), false);
 });

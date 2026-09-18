@@ -33,6 +33,15 @@ const TIMEOUT_MS = 8000;
 const USER_AGENT = 'Chaatak/0.1 (SIH2026 PS26068; https://chaatak.com)';
 
 /**
+ * Anything past the Latin blocks was not typed in Latin.
+ *
+ * Deliberately not a list of Indic blocks — this asks a simpler question than
+ * the geocoder routing in places.ts does, and copying that list here is how
+ * the two would drift apart when a language is added.
+ */
+const NON_LATIN = /[^\u0000-\u02AF]/;
+
+/**
  * Devanagari is written in India and Nepal, and both keep a single timezone
  * nationwide — so this is an exact lookup, not an approximation of a zone from
  * a coordinate. Nominatim does not report timezones of its own.
@@ -86,14 +95,21 @@ export const nominatimPlaces: PlaceResolver = {
       });
     }
 
+    // Answer in the script the question was asked in. This resolver used to
+    // serve Devanagari queries only, so `hi` was hardcoded and always right.
+    // It now also backs up the Latin path, and asking for Hindi there came
+    // back with मुंबई for "Mumbai" — switching script on someone who typed
+    // Latin, which is the one thing the language rules never allow.
+    const answerIn = NON_LATIN.test(trimmed) ? 'hi' : 'en';
+
     const url =
       `${HOST}${SEARCH_PATH}?q=${encodeURIComponent(trimmed)}` +
       `&format=jsonv2&limit=1&addressdetails=1` +
       `&countrycodes=${Object.keys(COUNTRY_ZONES).join(',')}` +
-      `&accept-language=hi`;
+      `&accept-language=${answerIn}`;
 
     return cached<Location | NoData>(
-      `nominatim:${trimmed.toLowerCase()}`,
+      `nominatim:${answerIn}:${trimmed.toLowerCase()}`,
       TTL.geocode,
       async () => {
         let hits: NominatimHit[];
