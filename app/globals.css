@@ -4,11 +4,40 @@
 
 @import "../brand.css";
 
-/* next/font self-hosts both faces and exposes them as variables. These
-   override the raw family names declared in brand.css. */
+/* next/font self-hosts every face and exposes it as a variable. These override
+   the raw family names declared in brand.css. */
 :root {
   --font-latin: var(--font-instrument), system-ui, sans-serif;
   --font-deva: var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif;
+  --font-beng: var(--font-noto-bengali), 'Noto Sans Bengali', sans-serif;
+  --font-gujr: var(--font-noto-gujarati), 'Noto Sans Gujarati', sans-serif;
+  --font-taml: var(--font-noto-tamil), 'Noto Sans Tamil', sans-serif;
+  --font-guru: var(--font-noto-gurmukhi), 'Noto Sans Gurmukhi', sans-serif;
+}
+
+/* Each Indic script gets its own face and its own leading. Devanagari,
+   Bengali and Gurmukhi hang glyphs below a headline stroke and need more room
+   than Latin; Tamil is taller still. Tagging text with `lang` is what routes
+   it — the same mechanism Hindi has used since Phase 1, extended rather than
+   special-cased. */
+:lang(bn) {
+  font-family: var(--font-beng);
+  line-height: 1.8;
+}
+
+:lang(gu) {
+  font-family: var(--font-gujr);
+  line-height: 1.75;
+}
+
+:lang(ta) {
+  font-family: var(--font-taml);
+  line-height: 1.85;
+}
+
+:lang(pa) {
+  font-family: var(--font-guru);
+  line-height: 1.8;
 }
 
 *,

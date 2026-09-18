@@ -41,8 +41,13 @@ function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-/** Locale tags the browser engines expect. */
-const LOCALE = { hi: 'hi-IN', en: 'en-IN' } as const;
+/**
+ * Locale tags come from the language registry, so adding a language cannot
+ * leave this map behind. Browser coverage beyond Hindi and English is patchy —
+ * an unsupported locale simply fails to start, which the session reports as a
+ * failure rather than silently listening in the wrong language.
+ */
+import { bcp47 } from '../i18n/languages';
 
 export const webSpeech: SpeechSource = {
   name: 'Web Speech',
@@ -68,7 +73,7 @@ export const webSpeech: SpeechSource = {
     }
 
     const recogniser = new Ctor();
-    recogniser.lang = LOCALE[lang];
+    recogniser.lang = bcp47(lang);
     recogniser.continuous = false;
     recogniser.interimResults = true;
     recogniser.maxAlternatives = 1;
@@ -156,7 +161,7 @@ export const webSpeech: SpeechSource = {
 
         await new Promise<void>((resolve) => {
           const speech = new SpeechSynthesisUtterance(text);
-          speech.lang = LOCALE[segment.lang];
+          speech.lang = bcp47(segment.lang);
           speech.onend = () => resolve();
           speech.onerror = () => resolve();
           window.speechSynthesis.speak(speech);

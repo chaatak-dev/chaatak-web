@@ -9,6 +9,7 @@
  */
 
 import { isConfigurationError, mayRevealConfiguration } from '@/lib/errors';
+import { interfaceLanguage, isLanguageCode, taxonomyLanguage } from '@/lib/i18n/languages';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
 import { REDIRECT } from '@/lib/chat/scope';
@@ -17,6 +18,7 @@ import { logQuery } from '@/lib/log';
 import { GAZETTEER } from '@/lib/parse/gazetteer';
 import { patternParser } from '@/lib/parse/patterns';
 import { writeReply } from '@/lib/render/reply';
+import type { InterfaceLang } from '@/lib/i18n/languages';
 import type { SpeechLang } from '@/lib/speech/types';
 import { OUTLOOK_DAYS } from '@/lib/weather/api';
 import { placeResolver, weatherSource } from '@/lib/weather/source';
@@ -53,7 +55,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!question) return Response.json({ error: 'no question' }, { status: 400 });
 
   try {
-  const lang: SpeechLang = body.lang === 'en' ? 'en' : 'hi';
+  // Any of the seven. An unrecognised code falls back rather than throwing:
+  // a bad language header should not cost someone their forecast.
+  const lang: SpeechLang = isLanguageCode(body.lang) ? body.lang : 'hi';
+  /** The two languages the templates and taxonomy are actually written in. */
+  const chrome = interfaceLanguage(lang);
   const history = Array.isArray(body.history) ? body.history : [];
   const standing = body.standing ?? null;
 
@@ -105,7 +111,7 @@ export async function POST(request: Request): Promise<Response> {
       outcome: 'cannotParse',
     });
     const reply: ChatReply = {
-      text: REDIRECT[lang],
+      text: REDIRECT[chrome],
       lang,
       standing,
       meta: {
@@ -132,7 +138,7 @@ export async function POST(request: Request): Promise<Response> {
     if ('kind' in resolved) {
       // Unresolvable place: an honest statement, no model call at all.
       const reply: ChatReply = {
-        text: resolved.statement[lang],
+        text: resolved.statement[chrome],
         lang,
         standing,
         meta: {
@@ -202,14 +208,14 @@ export async function POST(request: Request): Promise<Response> {
       current:
         current.kind === 'reading'
           ? {
-              condition: conditionFor(current.conditionCode)?.[lang] ?? null,
+              condition: conditionFor(current.conditionCode)?.[taxonomyLanguage(lang)] ?? null,
               measurements: current.measurements,
             }
-          : { unavailable: current.statement[lang] },
+          : { unavailable: current.statement[chrome] },
       outlook:
         outlook.kind === 'forecast'
           ? { days: outlook.days, units: outlook.units }
-          : { unavailable: outlook.statement[lang] },
+          : { unavailable: outlook.statement[chrome] },
     };
 
     places.push(resolved.name);
@@ -241,8 +247,8 @@ export async function POST(request: Request): Promise<Response> {
   const context = boundContext(history, nextStanding, facts);
 
   const fallback = facts
-    ? buildTemplate(facts, lang)
-    : lang === 'hi'
+    ? buildTemplate(facts, chrome)
+    : chrome === 'hi'
       ? 'मैं मौसम के बारे में बता सकता हूँ। किस जगह का पूछना है?'
       : 'I can help with the weather. Which place would you like?';
 
@@ -326,7 +332,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 /** The floor the system lands on when the model is out or the gate rejects. */
-function buildTemplate(facts: FactsSnapshot, lang: SpeechLang): string {
+function buildTemplate(facts: FactsSnapshot, lang: InterfaceLang): string {
   const current = facts.current as
     | { condition: string | null; measurements: { key: string; value: number; unit: string }[] }
     | { unavailable: string };

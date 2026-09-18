@@ -11,6 +11,7 @@
  * says so in as many words.
  */
 
+import { interfaceLanguage } from '../i18n/languages';
 import type { SpeechLang } from '../speech/types';
 
 export type RequestFailure =
@@ -78,5 +79,7 @@ export function classifyFailure(opts: {
 }
 
 export function failureText(failure: RequestFailure, lang: SpeechLang): string {
-  return describeFailure(failure)[lang];
+  // Interface chrome exists in two languages. A Tamil speaker gets it in the
+  // one their script is closest to, never a machine translation of it.
+  return describeFailure(failure)[interfaceLanguage(lang)];
 }

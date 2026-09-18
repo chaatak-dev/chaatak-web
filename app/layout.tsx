@@ -1,5 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Sans, Noto_Sans_Devanagari } from 'next/font/google';
+import {
+  Instrument_Sans,
+  Noto_Sans_Bengali,
+  Noto_Sans_Devanagari,
+  Noto_Sans_Gujarati,
+  Noto_Sans_Gurmukhi,
+  Noto_Sans_Tamil,
+} from 'next/font/google';
 import { THEME_BOOTSTRAP } from '@/lib/theme';
 import './globals.css';
 import './chaatak.css';
@@ -20,6 +27,53 @@ const notoSansDevanagari = Noto_Sans_Devanagari({
   variable: '--font-noto-devanagari',
   display: 'swap',
 });
+
+/*
+ * The other four Indic scripts, each `preload: false`.
+ *
+ * The audience is on a cheap Android phone and a weak connection, so a Hindi
+ * speaker must not pay to download Tamil. Without preload the browser fetches
+ * a face only once an element actually renders in it — which happens when
+ * someone picks that language, and never otherwise.
+ *
+ * Marathi is absent on purpose: it is written in Devanagari, already loaded.
+ */
+const notoSansBengali = Noto_Sans_Bengali({
+  subsets: ['bengali'],
+  variable: '--font-noto-bengali',
+  display: 'swap',
+  preload: false,
+});
+
+const notoSansGujarati = Noto_Sans_Gujarati({
+  subsets: ['gujarati'],
+  variable: '--font-noto-gujarati',
+  display: 'swap',
+  preload: false,
+});
+
+const notoSansTamil = Noto_Sans_Tamil({
+  subsets: ['tamil'],
+  variable: '--font-noto-tamil',
+  display: 'swap',
+  preload: false,
+});
+
+const notoSansGurmukhi = Noto_Sans_Gurmukhi({
+  subsets: ['gurmukhi'],
+  variable: '--font-noto-gurmukhi',
+  display: 'swap',
+  preload: false,
+});
+
+const FONT_VARIABLES = [
+  instrumentSans.variable,
+  notoSansDevanagari.variable,
+  notoSansBengali.variable,
+  notoSansGujarati.variable,
+  notoSansTamil.variable,
+  notoSansGurmukhi.variable,
+].join(' ');
 
 export const metadata: Metadata = {
   title: 'Chaatak — IMD forecasts and warnings',
@@ -46,7 +100,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${instrumentSans.variable} ${notoSansDevanagari.variable}`}
+      className={FONT_VARIABLES}
     >
       <head>
         {/*

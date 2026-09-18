@@ -6,7 +6,10 @@
  * more dangerous than an admitted failure to understand it.
  */
 
-export type QueryLang = 'hi' | 'en';
+import type { LanguageCode } from '../i18n/languages';
+
+/** Any of the seven. The parser sees what the user actually spoke. */
+export type QueryLang = LanguageCode;
 
 export type Intent =
   /** Conditions right now. */

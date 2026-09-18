@@ -605,64 +605,6 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Voice language                                                      */
-/* ------------------------------------------------------------------ */
-
-.langtoggle {
-  padding: 18px var(--gutter) 0;
-}
-
-.langtoggle__label {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-bottom: 8px;
-}
-
-.langtoggle__label-hi {
-  font-family: var(--font-deva);
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.langtoggle__label-en {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-soft);
-}
-
-.langtoggle__row {
-  display: flex;
-  gap: 8px;
-}
-
-/* Two buttons, not a dropdown: the current choice stays visible and
-   switching costs one tap. 46px keeps the target thumb-sized. */
-.langtoggle__option {
-  flex: 1;
-  min-height: 46px;
-  padding: 0 14px;
-  /* The face comes from each option's own lang tag, not from the button. */
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--paper);
-  border: 1.5px solid var(--border-control);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.langtoggle__option.is-active {
-  color: var(--paper);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-/* ------------------------------------------------------------------ */
 /* Microphone — the largest element on screen                          */
 /* ------------------------------------------------------------------ */
 
@@ -831,16 +773,37 @@
 }
 
 .chat__scroll {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
   overflow-y: auto;
   padding: 18px var(--gutter) 8px;
   overscroll-behavior: contain;
 }
 
+/* A scrolling flex column will happily shrink its children to fit rather
+   than scroll. Turns keep their height and the container scrolls. */
+.chat__scroll > * {
+  flex: 0 0 auto;
+}
+
 /* Empty state: a statement of what this is, and three things to try. */
 .chat__empty {
   padding-top: 8px;
+}
+
+/* With no transcript yet, the invitation sits in the middle of the paper
+   rather than stranded at the top of a tall empty column.
+
+   auto margins, not justify-content: center. Centring a flex container that
+   can overflow clips the start of the content and leaves no way to scroll
+   back to it — on a short landscape phone that would hide the headline.
+   An auto margin collapses to zero the moment there is no free space, so
+   the same rule centres on a desktop and behaves normally on a 460px-tall
+   phone without a breakpoint. */
+.chat__scroll--empty > .chat__empty {
+  margin-block: auto;
 }
 
 .chat__empty-headline {
@@ -1046,23 +1009,6 @@
   margin-top: 6px;
 }
 
-/* Header placement: buttons only, no label. */
-.langtoggle--compact {
-  flex: none;
-  padding: 0;
-  margin-left: auto;
-}
-
-.langtoggle--compact .langtoggle__label {
-  display: none;
-}
-
-.langtoggle--compact .langtoggle__option {
-  flex: none;
-  min-height: 36px;
-  padding: 0 12px;
-  font-size: 13px;
-}
 
 /* The page is a fixed-height app shell here: the transcript scrolls, the
    composer does not. */
@@ -1189,33 +1135,337 @@ body:has(.chat) {
   text-overflow: ellipsis;
 }
 
-.langtoggle--compact,
 .themetoggle {
   flex: 0 0 auto;
 }
 
-/* Below 420px the controls shrink rather than the mark. */
-@media (max-width: 420px) {
-  .langtoggle--compact .langtoggle__option {
-    min-height: 34px;
-    padding: 0 9px;
-    font-size: 12px;
+/* The masthead used to carry the language and theme controls too, and below
+   420px it bought room for them by trimming its own gutter and dropping the
+   English subtitle. The controls now live in the rail, so the mark and the
+   wordmark have the row to themselves: the gutter matches the conversation
+   beneath it again, and CHAATAK stays put at every width. */
+
+/* ------------------------------------------------------------------ */
+/* Voice language picker                                               */
+/*                                                                     */
+/* A native select carrying a painted label. Seven scripts need the    */
+/* platform's own list — it is one tap, familiar, and reachable with a */
+/* thumb, which a bespoke dropdown would not be.                       */
+/* ------------------------------------------------------------------ */
+
+.langpicker {
+  padding: 18px var(--gutter) 0;
+}
+
+.langpicker__label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.langpicker__label-hi {
+  font-family: var(--font-deva);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.langpicker__label-en {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.langpicker__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
+  background: var(--paper);
+  border: 1.5px solid var(--border-control);
+  border-radius: var(--radius);
+}
+
+/* The real control sits invisibly on top, so keyboard, screen reader and the
+   platform picker all behave exactly as they should. */
+.langpicker__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.langpicker__control:focus-within {
+  border-color: var(--accent);
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.langpicker__icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--text-soft);
+}
+
+.langpicker__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.langpicker__chevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--text-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme toggle                                                        */
+/* ------------------------------------------------------------------ */
+
+.themetoggle__option svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Borrowed-taxonomy notice                                            */
+/*                                                                     */
+/* Stated where the choice was made. Quiet, because it is a fact about */
+/* coverage and not a warning about weather — the severity palette     */
+/* stays reserved for severity.                                        */
+/* ------------------------------------------------------------------ */
+
+.langnote {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 var(--gutter) 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.langnote__native {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.langnote__text {
+  flex: 1;
+  min-width: 14rem;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* Adapting to the screen                                              */
+/*                                                                     */
+/* The column was built for a phone and then shown at every width,     */
+/* which on a laptop is a narrow strip of app in a field of paper. The */
+/* fix is not to widen the measure — 34rem is right for reading, and   */
+/* stretching it would break the line length the type was set for. It  */
+/* is to let the room the larger screen actually has do some work.     */
+/*                                                                     */
+/* Three sizes, each earning its change:                               */
+/*   ≤ 420   one thumb, controls shrink before the mark does           */
+/*   ≥ 640   the gutter opens; the composer stops hugging the edge     */
+/*   ≥ 1024  the preferences leave the masthead for a quiet rail, and  */
+/*           the conversation keeps its measure instead of drifting    */
+/* ------------------------------------------------------------------ */
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: 28px;
   }
 
-  .themetoggle__option {
-    width: 32px;
-    min-height: 34px;
-    font-size: 13px;
+  .chat__scroll {
+    padding-top: 26px;
+  }
+
+  /* With room to spare, a turn reads better with its own breathing space
+     than packed at phone density. */
+  .turn {
+    margin-bottom: 24px;
+  }
+
+  .composer {
+    padding-bottom: 18px;
+  }
+
+  .chat__examples li {
+    padding: 14px 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* The shell becomes two columns: a rail that holds what the masthead was
+     overcrowded with, and the conversation at its own measure.
+
+     Both carry the gutter as padding and both are widened by exactly that
+     much, so their CONTENT boxes are the same 62rem starting at the same x.
+     Matching only the max-width left the mark indented one gutter past the
+     conversation beneath it — the one width where the two-column grid makes
+     that edge the most visible thing on the page. */
+  .masthead__inner,
+  .chat {
+    max-width: calc(62rem + 2 * var(--gutter));
+    padding-inline: var(--gutter);
   }
 
   .masthead__inner {
-    gap: 8px;
-    padding-inline: 12px;
+    gap: 16px;
+    min-height: 72px;
   }
 
-  /* The English subtitle is the first thing to go: चातक alone still names
-     the product, and the controls need the room more. */
-  .masthead__brand-en {
+  .chat {
+    display: grid;
+    grid-template-columns: minmax(0, 34rem) minmax(13rem, 1fr);
+    grid-template-rows: 1fr auto;
+    column-gap: 40px;
+    align-items: start;
+  }
+
+  .chat__scroll {
+    grid-column: 1;
+    grid-row: 1;
+    padding-inline: 0;
+  }
+
+  .composer {
+    grid-column: 1;
+    grid-row: 2;
+    padding-inline: 0;
+  }
+
+  /* The rail: preferences, out of the way of the conversation but never
+     more than one glance from it. */
+  .chat__rail {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1 / -1;
+    position: sticky;
+    top: 24px;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 26px;
+  }
+
+  .chat__rail .langpicker {
+    padding: 0;
+  }
+
+  .chat__rail .langpicker__label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+  }
+
+  .chat__rail .langpicker__control {
+    min-height: 46px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .chat__rail .langpicker__value {
+    flex: 1;
+    max-width: none;
+    font-size: 15.5px;
+  }
+
+  .chat__rail .langnote {
+    margin: 0;
+  }
+
+  .chat__rail-heading {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+}
+
+/* Below 1024 the rail is a strip above the conversation: the picker takes the
+   room, the theme buttons take what they need, and the note wraps beneath. */
+@media (max-width: 1023.98px) {
+  .chat__rail {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px var(--gutter);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .chat__rail-heading {
     display: none;
+  }
+
+  .chat__rail .langpicker {
+    flex: 1 1 12rem;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .chat__rail .langpicker__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .chat__rail .langpicker__control {
+    min-height: 42px;
+  }
+
+  .chat__rail .themetoggle {
+    flex: 0 0 auto;
+  }
+
+  /* The note is a full-width line under the controls, never squeezed beside
+     them — it is a sentence, not a chip. */
+  .chat__rail .langnote {
+    flex: 1 1 100%;
+    margin: 0;
+  }
+}
+
+/* A short landscape phone has almost no vertical room; the transcript needs
+   every pixel the chrome is not using. */
+@media (max-height: 460px) and (orientation: landscape) {
+  .masthead__inner {
+    min-height: 52px;
+    padding-block: 6px;
+  }
+
+  .chat__scroll {
+    padding-top: 12px;
+  }
+
+  .mic--compact {
+    padding-bottom: 6px;
   }
 }

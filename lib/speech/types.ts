@@ -7,7 +7,17 @@
  * fit without the caller branching.
  */
 
-export type SpeechLang = 'hi' | 'en';
+import type { LanguageCode } from '../i18n/languages';
+
+/**
+ * Every language Chaatak can hear and speak. Seven, verified against the live
+ * Bhashini pipeline.
+ *
+ * Distinct from InterfaceLang, which is the two the interface is actually
+ * written in. Conflating them is how a Tamil speaker would end up shown a
+ * machine-translated severity.
+ */
+export type SpeechLang = LanguageCode;
 
 /** What the engine heard, or why it heard nothing. Never a guess. */
 export type Recognition =

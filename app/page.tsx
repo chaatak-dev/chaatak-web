@@ -17,6 +17,12 @@ import type { ChatReply } from './api/chat/route';
 import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
 import { classifyFailure, failureText } from '@/lib/chat/failure';
+import {
+  isLanguageCode,
+  language,
+  taxonomyIsBorrowed,
+  type LanguageCode,
+} from '@/lib/i18n/languages';
 import { pickSource } from '@/lib/speech/source';
 import { formatStamp, placeLine } from '@/lib/format';
 import {
@@ -92,7 +98,10 @@ function subscribeLang(onChange: () => void): () => void {
 
 function storedLang(): SpeechLang {
   try {
-    return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'hi';
+    const stored = localStorage.getItem(LANG_KEY);
+    // Any of the seven. An unrecognised value falls back rather than throwing:
+    // a stale preference should not cost someone the app.
+    return isLanguageCode(stored) ? stored : 'hi';
   } catch {
     return 'hi';
   }
@@ -155,7 +164,7 @@ export default function Chat() {
     });
   }, []);
 
-  const chooseLang = useCallback((next: SpeechLang) => {
+  const chooseLang = useCallback((next: LanguageCode) => {
     try {
       localStorage.setItem(LANG_KEY, next);
     } catch {
@@ -343,10 +352,6 @@ export default function Chat() {
               </p>
             )}
           </div>
-          {shownMicState !== 'unsupported' && (
-            <LangToggle value={lang} onChange={chooseLang} compact />
-          )}
-          <ThemeToggle />
         </div>
       </header>
 
@@ -357,7 +362,7 @@ export default function Chat() {
           which is unusable the moment there is more than one exchange.
         */}
         <div
-          className="chat__scroll"
+          className={`chat__scroll${messages.length === 0 ? ' chat__scroll--empty' : ''}`}
           role="log"
           aria-live="polite"
           aria-relevant="additions"
@@ -445,6 +450,40 @@ export default function Chat() {
 
           <div ref={endRef} />
         </div>
+
+        {/*
+          Rendered ONCE. Duplicating them into the masthead as well put two
+          controls for one setting on screen at every width, and two elements
+          sharing #voice-language, which quietly broke the label association.
+          A strip above the conversation on narrow screens, a sticky column
+          beside it on wide ones — same markup, different placement.
+        */}
+        <aside className="chat__rail">
+          <p className="chat__rail-heading">Preferences</p>
+          {shownMicState !== 'unsupported' && (
+            <LangToggle value={lang} onChange={chooseLang} />
+          )}
+          <ThemeToggle />
+          {/*
+            Said once, where the choice was made, not buried in a settings
+            page. Bhashini speaks all seven; IMD's severity vocabulary is
+            human-translated into two, and machine-translating a warning level
+            is the one failure the verification gate cannot catch. So the gap
+            is stated rather than papered over.
+          */}
+          {taxonomyIsBorrowed(lang) && (
+            <p className="langnote" role="note">
+              <span lang={lang} className="langnote__native">
+                {language(lang).native}
+              </span>
+              <span className="langnote__text">
+                Chaatak listens and replies in {language(lang).english}.
+                Official warning levels stay in English — translated by hand,
+                never by machine.
+              </span>
+            </p>
+          )}
+        </aside>
 
         <div className="composer">
           <Mic
