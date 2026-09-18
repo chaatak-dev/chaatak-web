@@ -166,3 +166,40 @@ test('a reply may cite a forecast date it was given', () => {
   });
   assert.equal(verifyRender(reply, facts).ok, true);
 });
+
+test('a geocoder diacritic does not make the gate reject its own place', () => {
+  // Open-Meteo answers "Barabanki" with "Barabānki". Comparing the two raw
+  // rejected a place the gate had itself resolved and fetched, shipping the
+  // template instead of the answer on roughly a third of English turns.
+  const facts = buildFacts({
+    payload: { temperature: 32.1 },
+    places: ['Barabānki', 'Uttar Pradesh'],
+  });
+  const verdict = verifyRender(
+    'It is 32.1 in Barabanki right now.',
+    facts,
+    { gazetteer: new Set(['barabanki', 'jaipur']) },
+  );
+  assert.equal(verdict.ok, true);
+});
+
+test('folding accents does not damage Devanagari', () => {
+  // A blanket \p{M} strip would turn बाराबंकी into बरबक — matras and the
+  // virama are letters' worth of meaning in Indic scripts, not decoration.
+  const facts = buildFacts({
+    payload: { temperature: 32.1 },
+    places: ['बाराबंकी'],
+  });
+  assert.equal(
+    verifyRender('बाराबंकी में अभी 32.1 डिग्री है।', facts, {
+      gazetteer: new Set(['बाराबंकी']),
+    }).ok,
+    true,
+  );
+  // And an unresolved Devanagari place is still caught.
+  const caught = verifyRender('जयपुर में अभी 32.1 डिग्री है।', facts, {
+    gazetteer: new Set(['जयपुर']),
+  });
+  assert.equal(caught.ok, false);
+  if (!caught.ok) assert.equal(caught.reason, 'unknownPlace');
+});

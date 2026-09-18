@@ -14,12 +14,15 @@ import { providers } from '../llm/index';
 import { logGateRejection } from '../log';
 import { verifyReply } from './chat-gate';
 import type { ChatContext, FactsSnapshot } from '../chat/types';
+import type { AnswerStyle } from '../i18n/languages';
 import type { SpeechLang } from '../speech/types';
 import type { Severity } from '../weather/types';
 
 export type ReplyRequest = {
   question: string;
   lang: SpeechLang;
+  /** Which language and script to write in, derived from the question. */
+  answer: AnswerStyle;
   context: ChatContext;
   facts: FactsSnapshot | null;
   places: string[];
@@ -47,16 +50,24 @@ function systemPrompt(req: ReplyRequest): string {
     'Answer like a normal assistant. Opinions, advice, recommendations and',
     'follow-up questions are all welcome and expected. Be warm and brief.',
     '',
-    'MIRROR THE USER. Reply in the same language and script they used —',
-    'Devanagari in, Devanagari out; Hinglish in, Hinglish out. Match their',
-    'register: casual in, casual out. Never switch script on the user.',
-    'You may understand Haryanvi, Bhojpuri, Awadhi and Rajasthani input, but',
-    'reply in standard Hindi or English. Do not fake a dialect.',
+    // Named outright rather than left to "mirror the user", which drifted:
+    // Bengali and Punjabi questions came back in Hindi, English ones in
+    // Hinglish. The gate checks the script afterwards regardless.
+    `LANGUAGE. ${req.answer.instruction}`,
+    'Match their register: casual in, casual out. Never switch script on the',
+    'user. You may understand Haryanvi, Bhojpuri, Awadhi and Rajasthani input,',
+    'but reply in standard Hindi or English. Do not fake a dialect.',
     '',
     'THE ONE RULE: never state a weather number that was not given to you in',
     'DATA below. Not an estimate, not a rounding, not a typical value. If you',
     'were given no data, give no numbers — describe and advise instead.',
     'Write numbers as digits exactly as they appear in DATA, never in words.',
+    // Durations are the common way a stray numeral gets in. "next 24 hours"
+    // is not a weather claim, but 24 is not in DATA either, and the gate
+    // rejects the whole reply over it.
+    'This includes durations and counts: do not write "next 24 hours" or',
+    '"3-day forecast" unless that number is in DATA. Say "tomorrow" or',
+    '"later today" instead.',
   ];
 
   if (req.severityStrings?.length) {
@@ -125,6 +136,7 @@ export async function writeReply(req: ReplyRequest): Promise<ReplyResult> {
     severity: req.severity,
     severityStrings: req.severityStrings,
     gazetteer: req.gazetteer,
+    expectScript: req.answer.script,
   });
 
   if (!verdict.ok) {

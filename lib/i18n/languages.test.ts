@@ -1,18 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { LanguageCode } from './languages';
 import {
   LANGUAGES,
   TAXONOMY_FALLBACK,
+  answerStyle,
   bcp47,
+  detectScript,
   interfaceLanguage,
   isLanguageCode,
   language,
+  replyLanguage,
   scriptOf,
   taxonomyIsBorrowed,
   taxonomyLanguage,
 } from './languages';
+import type { LanguageCode, ScriptCode } from './languages';
 
 /**
  * Seven languages of speech, two of taxonomy.
@@ -110,4 +113,88 @@ test('BCP-47 tags are the ones the speech engines expect', () => {
   assert.equal(bcp47('hi'), 'hi-IN');
   assert.equal(bcp47('ta'), 'ta-IN');
   assert.equal(bcp47('pa'), 'pa-IN');
+});
+
+/* ------------------------------------------------------------------ */
+/* Answering in the script the user wrote in                           */
+/* ------------------------------------------------------------------ */
+
+test('the reply language follows the typed script, not the toggle', () => {
+  // The toggle is a VOICE choice. Letting it pick the script of written text
+  // switched script on anyone whose typing disagreed with it.
+  assert.equal(replyLanguage('Barabanki mein kal barish hogi?', 'hi'), 'en');
+  assert.equal(replyLanguage('Will it rain in Barabanki tomorrow?', 'hi'), 'en');
+  assert.equal(replyLanguage('बाराबंकी में कल बारिश होगी?', 'en'), 'hi');
+});
+
+test('an Indic script with no templates lands on English, never on Hindi', () => {
+  // Gujarati has speech but no hand-translated taxonomy. English is the honest
+  // floor; Devanagari would be switching one foreign script for another.
+  for (const [q, code] of [
+    ['અમદાવાદમાં કાલે વરસાદ પડશે?', 'gu'],
+    ['কলকাতায় আগামীকাল বৃষ্টি হবে?', 'bn'],
+    ['சென்னையில் நாளை மழை பெய்யுமா?', 'ta'],
+    ['ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਕੱਲ੍ਹ ਮੀਂਹ ਪਵੇਗਾ?', 'pa'],
+  ] as const) {
+    assert.equal(replyLanguage(q, code), 'en', q);
+  }
+});
+
+test('Marathi is Devanagari, so it borrows the Hindi templates', () => {
+  assert.equal(replyLanguage('पुण्यात उद्या पाऊस पडेल का?', 'mr'), 'hi');
+});
+
+test('text with no letters falls back to the spoken choice', () => {
+  // "26?" carries no script to mirror, so the explicit choice breaks the tie.
+  assert.equal(replyLanguage('26?', 'hi'), 'hi');
+  assert.equal(replyLanguage('', 'ta'), 'en');
+});
+
+test('detectScript names the dominant script, not the first one seen', () => {
+  assert.equal(detectScript('weather in বাংলা আবহাওয়া কেমন'), 'Beng');
+  assert.equal(detectScript('Barabanki'), 'Latn');
+  assert.equal(detectScript('123'), null);
+});
+
+test('the model is told a script for every language, matching the input', () => {
+  const cases: [string, LanguageCode, ScriptCode][] = [
+    ['बाराबंकी में कल बारिश होगी?', 'hi', 'Deva'],
+    ['पुण्यात उद्या पाऊस पडेल का?', 'mr', 'Deva'],
+    ['কলকাতায় আগামীকাল বৃষ্টি হবে?', 'bn', 'Beng'],
+    ['અમદાવાદમાં કાલે વરસાદ પડશે?', 'gu', 'Gujr'],
+    ['சென்னையில் நாளை மழை பெய்யுமா?', 'ta', 'Taml'],
+    ['ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਕੱਲ੍ਹ ਮੀਂਹ ਪਵੇਗਾ?', 'pa', 'Guru'],
+  ];
+  for (const [q, code, script] of cases) {
+    assert.equal(answerStyle(q, code).script, script, q);
+  }
+});
+
+test('Hinglish is told to stay in Latin, Hindi to stay in Devanagari', () => {
+  const hinglish = answerStyle('Barabanki mein kal barish hogi?', 'hi');
+  assert.equal(hinglish.script, 'Latn');
+  assert.match(hinglish.instruction, /Hinglish/);
+
+  const hindi = answerStyle('बाराबंकी में कल बारिश होगी?', 'hi');
+  assert.equal(hindi.script, 'Deva');
+});
+
+test('an English question is not mistaken for Hinglish', () => {
+  // The ambiguous overlap is what makes this fail: "me", "ka", "par" and
+  // "mere" are all English words too, so none of them may be a marker.
+  for (const q of [
+    'Will it rain in Barabanki tomorrow?',
+    'Is it safe to travel to Jaipur today?',
+    'Tell me the weather, par for the course, mere minutes away',
+    'What is the temperature at Pune right now?',
+  ]) {
+    const style = answerStyle(q, 'hi');
+    assert.equal(style.code, 'en', q);
+    assert.match(style.instruction, /English/);
+  }
+});
+
+test('a Marathi speaker typing Devanagari is answered in Marathi, not Hindi', () => {
+  assert.equal(answerStyle('पुण्यात उद्या पाऊस पडेल का?', 'mr').code, 'mr');
+  assert.equal(answerStyle('बाराबंकी में कल बारिश होगी?', 'hi').code, 'hi');
 });

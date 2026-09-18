@@ -158,3 +158,34 @@ test('English reassurance under a warning is caught too', () => {
   if (verdict.ok) return;
   assert.equal(verdict.reason, 'contradictsWarning');
 });
+
+test('a reply in the wrong script is rejected, however fluent', () => {
+  // Measured, not hypothetical: a Bengali question came back in correct,
+  // well-formed Hindi. Numerically spotless, severity intact, and still a
+  // script the user never wrote in.
+  const verdict = verifyReply('हाँ, कल कोलकाता में बारिश की संभावना है।', {
+    facts: null,
+    places: [],
+    severity: 'unknown',
+    expectScript: 'Beng',
+  });
+  assert.equal(verdict.ok, false);
+  if (!verdict.ok) assert.equal(verdict.reason, 'scriptSwitched');
+});
+
+test('the right script passes, and no expectation means no check', () => {
+  assert.equal(
+    verifyReply('হ্যাঁ, আগামীকাল বৃষ্টি হবে।', {
+      facts: null, places: [], severity: 'unknown', expectScript: 'Beng',
+    }).ok,
+    true,
+  );
+  // A reply with no letters at all cannot switch script and must not be held
+  // to one, or a bare "26 °C" would be rejected for being unreadable.
+  assert.equal(
+    verifyReply('26 °C', {
+      facts: null, places: [], severity: 'unknown', expectScript: 'Deva',
+    }).ok,
+    true,
+  );
+});

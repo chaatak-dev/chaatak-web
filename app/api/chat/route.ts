@@ -9,7 +9,7 @@
  */
 
 import { isConfigurationError, mayRevealConfiguration } from '@/lib/errors';
-import { interfaceLanguage, isLanguageCode, taxonomyLanguage } from '@/lib/i18n/languages';
+import { answerStyle, isLanguageCode, replyLanguage } from '@/lib/i18n/languages';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
 import { REDIRECT } from '@/lib/chat/scope';
@@ -58,8 +58,18 @@ export async function POST(request: Request): Promise<Response> {
   // Any of the seven. An unrecognised code falls back rather than throwing:
   // a bad language header should not cost someone their forecast.
   const lang: SpeechLang = isLanguageCode(body.lang) ? body.lang : 'hi';
-  /** The two languages the templates and taxonomy are actually written in. */
-  const chrome = interfaceLanguage(lang);
+  /**
+   * The language this turn is answered in, taken from the script the user
+   * wrote in rather than from the toggle. The toggle chooses a VOICE; it must
+   * not decide the script of written text, or someone typing Hinglish with it
+   * set to Hindi gets Devanagari back.
+   *
+   * The same value drives the warning taxonomy, so a reply can never come out
+   * half English template and half Hindi condition word.
+   */
+  const chrome = replyLanguage(question, lang);
+  /** Which language and script the model is told to write in, and is held to. */
+  const answer = answerStyle(question, lang);
   const history = Array.isArray(body.history) ? body.history : [];
   const standing = body.standing ?? null;
 
@@ -208,7 +218,7 @@ export async function POST(request: Request): Promise<Response> {
       current:
         current.kind === 'reading'
           ? {
-              condition: conditionFor(current.conditionCode)?.[taxonomyLanguage(lang)] ?? null,
+              condition: conditionFor(current.conditionCode)?.[chrome] ?? null,
               measurements: current.measurements,
             }
           : { unavailable: current.statement[chrome] },
@@ -260,6 +270,7 @@ export async function POST(request: Request): Promise<Response> {
     places,
     severity,
     gazetteer: GAZETTEER,
+    answer,
     fallback,
   });
 

@@ -17,8 +17,9 @@
  * so a rejected reply can never be quoted by a later turn.
  */
 
+import { detectScript, type ScriptCode } from '../i18n/languages';
 import { checkAdvice } from './advice';
-import { buildFacts, verifyRender, type GateRejection } from './gate';
+import { buildFacts, normalisePlace, verifyRender, type GateRejection } from './gate';
 import { MEASUREMENT_WORDS, extractNumbers, findSpelledOutValue, normaliseDigits } from './numbers';
 import type { FactsSnapshot } from '../chat/types';
 import type { Severity } from '../weather/types';
@@ -26,7 +27,9 @@ import type { Severity } from '../weather/types';
 export type ChatGateRejection =
   | GateRejection
   | 'severityNotLeading'
-  | 'contradictsWarning';
+  | 'contradictsWarning'
+  /** The reply came back in a script the user did not write in. */
+  | 'scriptSwitched';
 
 export type ChatVerdict =
   | { ok: true }
@@ -41,10 +44,25 @@ export type ChatGateInput = {
   /** Injected verbatim; must survive unchanged and lead the reply. */
   severityStrings?: string[];
   gazetteer?: Set<string>;
+  /** The script the reply must be in. Omitted only where there is no text to judge. */
+  expectScript?: ScriptCode | null;
 };
 
 /** How far from a measurement word counts as "adjacent". */
 const WINDOW = 4;
+
+/**
+ * Below this many letters there is no script to judge.
+ *
+ * "26 °C" is a perfectly good answer to a Hindi question, and its only letter
+ * is the C in the unit — which would read as Latin and be rejected as a script
+ * switch. A sentence in any of the seven clears this comfortably.
+ */
+const SCRIPT_MIN_LETTERS = 8;
+
+function countLetters(text: string): number {
+  return (text.match(/\p{L}/gu) ?? []).length;
+}
 
 /**
  * For an ungrounded turn: a numeral sitting next to a unit or a variable.
@@ -72,6 +90,25 @@ function numericWeatherClaim(text: string): string | null {
 
 export function verifyReply(text: string, input: ChatGateInput): ChatVerdict {
   const severityStrings = input.severityStrings ?? [];
+
+  // 0. The script the user wrote in. "Never switch script on the user" is a
+  //    locked rule, and until now it lived only in the prompt — which drifted:
+  //    Bengali and Punjabi questions came back in fluent Hindi. A rule that
+  //    matters is checked, not requested, so a drift ships the template.
+  //
+  //    Script only. English-versus-Hinglish is a judgement a lexicon makes
+  //    badly, and a safety gate should not be the thing guessing; the prompt
+  //    names the target and this catches the unambiguous failure.
+  if (input.expectScript && countLetters(text) >= SCRIPT_MIN_LETTERS) {
+    const got = detectScript(text);
+    if (got !== null && got !== input.expectScript) {
+      return {
+        ok: false,
+        reason: 'scriptSwitched',
+        detail: `asked in ${input.expectScript}, answered in ${got}`,
+      };
+    }
+  }
 
   // 1. Advice must not contradict an active warning. Checked first: it is the
   //    failure with the worst consequence and the one the other checks cannot
@@ -122,8 +159,9 @@ export function verifyReply(text: string, input: ChatGateInput): ChatVerdict {
   // The place check still applies: a turn that fetched nothing may name a
   // place, and it must be one that was actually in play.
   if (input.gazetteer) {
-    const allowed = new Set(input.places.map((p) => p.toLowerCase().trim()));
-    const haystack = normaliseDigits(text).toLowerCase();
+    // Same normalisation as the grounded path, diacritic folding included.
+    const allowed = new Set(input.places.map(normalisePlace));
+    const haystack = normalisePlace(text);
 
     for (const candidate of input.gazetteer) {
       if (!candidate) continue;

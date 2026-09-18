@@ -186,3 +186,144 @@ export function interfaceLanguage(code: LanguageCode): InterfaceLang {
   // English; Dravidian and Latin-script speakers get English.
   return scriptOf(code) === 'Deva' ? 'hi' : 'en';
 }
+
+/* ------------------------------------------------------------------ */
+/* What language to answer in                                          */
+/* ------------------------------------------------------------------ */
+
+/** The Unicode block each script Chaatak accepts is written in. */
+const SCRIPT_RANGES: [ScriptCode, RegExp][] = [
+  ['Deva', /[ऀ-ॿ]/g],
+  ['Beng', /[ঀ-৿]/g],
+  ['Guru', /[਀-੿]/g],
+  ['Gujr', /[઀-૿]/g],
+  ['Taml', /[஀-௿]/g],
+  ['Latn', /[A-Za-z]/g],
+];
+
+/**
+ * The script a piece of text is predominantly written in, or null when it
+ * carries no letters at all — a bare "26?" or an emoji.
+ */
+export function detectScript(text: string): ScriptCode | null {
+  let best: ScriptCode | null = null;
+  let bestCount = 0;
+  for (const [script, pattern] of SCRIPT_RANGES) {
+    const count = (text.match(pattern) ?? []).length;
+    if (count > bestCount) {
+      best = script;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/**
+ * The language to write this turn's template and taxonomy in.
+ *
+ * Driven by the script the user actually wrote in, NOT by the language
+ * toggle. The toggle is a speech choice — which locale the recogniser
+ * listens in and which voice reads back — and using it here switched script
+ * on anyone whose typing disagreed with it: someone typing Hinglish with the
+ * toggle on Hindi got a Devanagari template back, and someone typing Gujarati
+ * got an English one. "Never switch script on the user" is a locked rule, and
+ * it was being broken on every template fallback.
+ *
+ * Templates and the warning taxonomy are hand-written in Hindi and English
+ * only, so Devanagari answers in Hindi and every other script answers in
+ * English. English is the right landing place for Latin input because it
+ * preserves the script, which is the rule that matters; it is the right one
+ * for the other Indic scripts because no template exists in them and machine
+ * translating a severity level is the one failure the gate cannot catch.
+ *
+ * Only when the text has no letters to judge — a bare numeral, an emoji —
+ * does the spoken choice break the tie.
+ */
+export function replyLanguage(question: string, spoken: LanguageCode): InterfaceLang {
+  const script = detectScript(question);
+  if (script === null) return interfaceLanguage(spoken);
+  return script === 'Deva' ? 'hi' : 'en';
+}
+
+/* ------------------------------------------------------------------ */
+/* Telling the model what to write in                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Romanised-Hindi markers that an English weather question would not contain.
+ *
+ * Deliberately narrower than the parser's stopword list, which mixes English
+ * and Hinglish because it is solving a different problem (stripping filler off
+ * a place name). Here a single English word misread as Hinglish would answer an
+ * English speaker in romanised Hindi, so the ambiguous overlap — "me", "ka",
+ * "ke", "par", "se", "mere" — is left out and only the unmistakable stay.
+ */
+const ROMANISED_HINDI = [
+  'mein', 'mai', 'hai', 'hain', 'hoga', 'hogi', 'rahega', 'rahegi',
+  'kaisa', 'kaisi', 'kaise', 'kya', 'kitna', 'kitni', 'batao', 'bataiye',
+  'zara', 'aur', 'liye', 'wala', 'wali', 'koi', 'vahan', 'nahi', 'nahin',
+  'haan', 'abhi', 'aaj', 'kal', 'barish', 'baarish', 'barsaat', 'mausam',
+  'garmi', 'thand', 'dhoop', 'andhi', 'toofan', 'chhata', 'sardi',
+];
+
+/** Whole words only — the house rule for every lexical check in this codebase. */
+function hasWord(haystack: string, word: string): boolean {
+  return new RegExp(`(?<![\p{L}\p{M}])${word}(?![\p{L}\p{M}])`, 'u').test(haystack);
+}
+
+function looksRomanisedHindi(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ROMANISED_HINDI.some((word) => hasWord(lower, word));
+}
+
+export type AnswerStyle = {
+  /** The language the reply should be written in. */
+  code: LanguageCode;
+  /** The script it must come back in. Enforced by the gate, not just asked for. */
+  script: ScriptCode;
+  /** Phrased for the model to follow rather than to infer. */
+  instruction: string;
+};
+
+const STYLES: Record<string, Omit<AnswerStyle, 'code'>> = {
+  en: { script: 'Latn', instruction: 'Write your reply in English.' },
+  hinglish: {
+    script: 'Latn',
+    instruction:
+      'Write your reply in Hinglish — Hindi written in the Latin alphabet, ' +
+      'exactly as the user just wrote it. Do not use Devanagari.',
+  },
+  hi: { script: 'Deva', instruction: 'Write your reply in Hindi, in Devanagari script.' },
+  mr: { script: 'Deva', instruction: 'Write your reply in Marathi, in Devanagari script.' },
+  bn: { script: 'Beng', instruction: 'Write your reply in Bengali, in the Bengali script.' },
+  gu: { script: 'Gujr', instruction: 'Write your reply in Gujarati, in the Gujarati script.' },
+  ta: { script: 'Taml', instruction: 'Write your reply in Tamil, in the Tamil script.' },
+  pa: { script: 'Guru', instruction: 'Write your reply in Punjabi, in the Gurmukhi script.' },
+};
+
+/**
+ * Which language and script the model must answer this turn in.
+ *
+ * Derived here rather than left to the prompt's "mirror the user". Mirroring
+ * was an instruction, and instructions drift: measured across the seven, the
+ * model answered a Bengali question in Hindi, a Punjabi one in Hindi and an
+ * English one in Hinglish — each time fluently, each time in a script the user
+ * had not used. Naming the target explicitly is deterministic, and the gate
+ * enforces the script afterwards so a drift lands on the template instead of
+ * on the user.
+ */
+export function answerStyle(question: string, spoken: LanguageCode): AnswerStyle {
+  const script = detectScript(question);
+
+  let key: string;
+  if (script === null) key = spoken;
+  else if (script === 'Deva') key = spoken === 'mr' ? 'mr' : 'hi';
+  else if (script === 'Beng') key = 'bn';
+  else if (script === 'Gujr') key = 'gu';
+  else if (script === 'Taml') key = 'ta';
+  else if (script === 'Guru') key = 'pa';
+  else key = looksRomanisedHindi(question) ? 'hinglish' : 'en';
+
+  const style = STYLES[key] ?? STYLES.en;
+  return { code: key === 'hinglish' ? 'hi' : (key as LanguageCode), ...style };
+}

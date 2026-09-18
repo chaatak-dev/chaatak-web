@@ -81,8 +81,26 @@ export function collectNumbers(payload: unknown, into = new Set<number>()): Set<
   return into;
 }
 
-function normalisePlace(place: string): string {
-  return normaliseDigits(place).toLowerCase().trim();
+/**
+ * Drop accents from Latin letters only.
+ *
+ * Geocoders return diacritics the user never types: Open-Meteo resolves
+ * "Barabanki" to "Barabānki", so comparing the two raw made the gate reject a
+ * place it had itself resolved and fetched — a false positive on roughly a
+ * third of English turns, each one shipping the template instead of the answer.
+ *
+ * Scoped to an ASCII base character on purpose. A blanket strip of \p{M} would
+ * also take Devanagari vowel signs and the virama, turning बाराबंकी into बरबक
+ * and quietly breaking every Devanagari place comparison. Combining marks are
+ * load-bearing in Indic scripts and decoration in Latin ones; only the second
+ * kind is safe to discard.
+ */
+function foldLatinDiacritics(text: string): string {
+  return text.normalize('NFD').replace(/([A-Za-z])\p{M}+/gu, '$1');
+}
+
+export function normalisePlace(place: string): string {
+  return foldLatinDiacritics(normaliseDigits(place)).toLowerCase().trim();
 }
 
 export function buildFacts(opts: {
