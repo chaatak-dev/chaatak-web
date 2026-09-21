@@ -537,6 +537,22 @@
   opacity: 0.8;
 }
 
+/* The hazard reads Hindi first, English beneath, the same order the severity
+   above it uses. Devanagari needs the extra leading. */
+.band__code [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.band__code-en {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
 /* Inside a band the ground is already the severity colour, so the provenance
    rule and mark take the band's own ink instead. */
 .band .provenance {

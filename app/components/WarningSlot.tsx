@@ -13,6 +13,7 @@
  */
 
 import type { NoData, NoWarning, Severity, Warning } from '@/lib/weather/types';
+import { hazardText } from '@/lib/weather/imd-codes';
 import { NoDataField } from './NoDataField';
 import { NoWarningField } from './NoWarningField';
 import { Provenance } from './Provenance';
@@ -80,13 +81,17 @@ function WarningBand({
       <p className="band__subtitle">{words.action.en}</p>
 
       {/*
-        The warning narrative renders from IMD's code template catalogue,
-        which arrives with the IMD adapter in Phase 4. Until then the code
-        itself is shown rather than any text invented for it.
+        The hazard, in words, from IMD's own published code table. A code IMD
+        has not published falls back to the number: better an unfamiliar
+        number than a description nobody issued.
+
+        Hindi above, English beneath, matching the severity band: the reader
+        this is built for reads the first line.
       */}
       <p className="band__code">
         {warnings.length > 1 ? `${warnings.length} warnings · ` : ''}
-        {top.code}
+        <span lang="hi">{hazardText(top.code, 'hi') || top.code}</span>
+        <span className="band__code-en">{hazardText(top.code, 'en') || top.code}</span>
       </p>
 
       <Provenance

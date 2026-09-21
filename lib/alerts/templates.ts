@@ -7,10 +7,12 @@
  * neither failure is visible in the output. Severity is not negotiable enough
  * for either.
  *
- * Phase 4-real replaces the codes below with IMD's own 17 district warning
- * codes and 19 nowcast categories, keeping the same shape.
+ * Hazard words come from lib/weather/imd-codes.ts, which carries IMD's own
+ * published code table verbatim. Severity words stay here because they are
+ * this system's own phrasing of IMD's colour scale.
  */
 
+import { hazardText } from '../weather/imd-codes';
 import type { AlertPayload } from './types';
 import type { Severity } from '../weather/types';
 
@@ -31,21 +33,16 @@ const SEVERITY_ACTION: Record<Severity, Bilingual> = {
   warning: { hi: 'तुरंत कार्रवाई करें', en: 'Take action now' },
 };
 
-/** Hazard codes. Human-translated once, keyed by code. */
-const HAZARDS: Record<string, Bilingual> = {
-  'HR-2': { hi: 'भारी बारिश', en: 'Heavy rain' },
-  'HR-3': { hi: 'बहुत भारी बारिश', en: 'Very heavy rain' },
-  'HR-4': { hi: 'अत्यंत भारी बारिश', en: 'Extremely heavy rain' },
-  'TS-1': { hi: 'गरज के साथ तूफ़ान', en: 'Thunderstorm' },
-  'TS-2': { hi: 'ओलावृष्टि के साथ तूफ़ान', en: 'Thunderstorm with hail' },
-  'HW-1': { hi: 'लू', en: 'Heatwave' },
-  'CY-1': { hi: 'चक्रवात', en: 'Cyclone' },
-  'FL-1': { hi: 'बाढ़', en: 'Flood' },
-};
 
-/** An unmapped code prints as the code. We do not invent a description. */
+/**
+ * The hazard words for a code list.
+ *
+ * Comes from IMD's own published code table, not from anything written here.
+ * An unrecognised code prints as the code: better an unfamiliar number than a
+ * description nobody issued.
+ */
 function hazard(code: string, lang: 'hi' | 'en'): string {
-  return HAZARDS[code]?.[lang] ?? code;
+  return hazardText(code, lang) || code;
 }
 
 function timeIn(iso: string, lang: 'hi' | 'en'): string {

@@ -126,3 +126,58 @@ export function placeLine(parts: {
     parts.admin1 && parts.admin1 !== parts.name ? parts.admin1 : parts.country;
   return region ? `${parts.name}, ${region}` : parts.name;
 }
+
+/* ------------------------------------------------------------------ */
+/* IMD timestamps, read by people                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * India Meteorological Department publishes on Indian Standard Time, and
+ * every IMD timestamp in this system is stored as a machine-readable instant.
+ * These render that instant for a reader without changing it.
+ *
+ * The stored value stays ISO 8601 everywhere it is stored. Only the surface
+ * changes: a bulletin time read out as "2026-09-21T09:14:06.000Z" tells a
+ * farmer nothing, and is five and a half hours away from what their clock
+ * says.
+ */
+const IST = 'Asia/Kolkata';
+
+/** "21 Sep 2026" — a calendar date in IST. */
+export function formatIstDate(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(at);
+}
+
+/** "21 Sep 2026, 14:44 IST" — a full stamp in IST, zone named. */
+export function formatIstStamp(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const date = formatIstDate(iso);
+  const clock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(at);
+  return `${date}, ${clock} IST`;
+}
+
+/**
+ * "21 Sep 2026" for a window inside one day, "21 Sep 2026 to 22 Sep 2026"
+ * across two.
+ *
+ * IMD district warnings run midnight to midnight IST, so the common case is
+ * one day and repeating the date twice reads as noise.
+ */
+export function formatIstWindow(fromIso: string, toIso: string): string {
+  const from = formatIstDate(fromIso);
+  const to = formatIstDate(toIso);
+  return from === to ? from : `${from} to ${to}`;
+}
