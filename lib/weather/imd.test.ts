@@ -6,8 +6,12 @@ import {
   hazardCodes,
   imdDistrictId,
   issuedAtFrom,
+  numberFrom,
+  observedAt,
   rowToWarnings,
   severityFromColour,
+  toForecast,
+  toReading,
   warningRows,
 } from './imd';
 import type { DistrictId } from './types';
@@ -187,4 +191,120 @@ test('a district IMD does not cover resolves to nothing, not to a neighbour', ()
   for (const name of ['Zzzznotadistrict', '', 'Atlantis']) {
     assert.equal(imdDistrictId(name as DistrictId), null, name);
   }
+});
+
+/* ---- readings and the forecast ---------------------------------------- */
+
+/** A real current_wx row, copied from a live response. */
+const LIVE_OBSERVATION = {
+  'Station Id': '42647',
+  Station: 'Ahmedabad',
+  'Date of Observation': '2026-09-21',
+  Time: '7',
+  'Wind Speed KMPH': '7.4',
+  Temperature: '32',
+  'Weather Code': '5',
+  Humidity: '63',
+  'Last 24 hrs Rainfall': '0',
+  'Feel Like': '38',
+};
+
+test('IMD sends every value as a string, and absence in three different ways', () => {
+  assert.equal(numberFrom('32'), 32);
+  assert.equal(numberFrom('7.4'), 7.4);
+  assert.equal(numberFrom(29), 29);
+  // "NIL" is how rainfall says none was recorded. It is not a zero, and
+  // reading it as one would invent a measurement.
+  assert.equal(numberFrom('NIL'), null);
+  assert.equal(numberFrom(''), null);
+  assert.equal(numberFrom(null), null);
+  assert.equal(numberFrom(undefined), null);
+  assert.equal(numberFrom('-'), null);
+  assert.equal(numberFrom('cloudy'), null);
+});
+
+test('an observation time is read as IST, not as UTC', () => {
+  // Hour 7 in Ahmedabad is 01:30 UTC. Read as UTC it would be five and a half
+  // hours adrift, which moves a reading into the wrong part of the day.
+  assert.equal(observedAt('2026-09-21', '7'), '2026-09-21T01:30:00.000Z');
+  assert.equal(observedAt('2026-09-21', null), '2026-09-20T18:30:00.000Z');
+  assert.equal(observedAt('nonsense', '7'), null);
+});
+
+test('a live observation row becomes a reading carrying IMD as its source', () => {
+  const reading = toReading(LIVE_OBSERVATION, '/api/v1/current_wx');
+  assert.ok(reading);
+  assert.equal(reading.provenance.source, 'IMD');
+  assert.equal(reading.provenance.issuedAt, '2026-09-21T01:30:00.000Z');
+  const byKey = Object.fromEntries(reading.measurements.map((m) => [m.key, m]));
+  assert.equal(byKey.temperature.value, 32);
+  assert.equal(byKey.temperature.unit, '°C');
+  assert.equal(byKey.humidity.value, 63);
+  assert.equal(byKey.windSpeed.value, 7.4);
+  assert.equal(byKey.windSpeed.unit, 'km/h');
+  assert.equal(byKey.apparentTemperature.value, 38);
+});
+
+test('IMD weather code is NEVER passed off as a WMO code', () => {
+  // The condition words everything above the adapter renders are keyed on WMO.
+  // IMD sends its own numbering, so handing "5" through would print the wrong
+  // weather in words -- fluent, plausible and wrong.
+  const reading = toReading(LIVE_OBSERVATION, '/api/v1/current_wx');
+  assert.ok(reading);
+  assert.equal(reading.conditionCode, null);
+});
+
+test('a row with nothing measured is not a reading full of blanks', () => {
+  const empty = { ...LIVE_OBSERVATION, Temperature: 'NIL', Humidity: '', 'Wind Speed KMPH': null, 'Feel Like': '', 'Last 24 hrs Rainfall': 'NIL' };
+  assert.equal(toReading(empty, '/api/v1/current_wx'), null);
+});
+
+test('a reading with no observation time is refused', () => {
+  assert.equal(toReading({ ...LIVE_OBSERVATION, 'Date of Observation': '' }, '/x'), null);
+});
+
+/** A real cityforecast row, copied from a live response. */
+const LIVE_FORECAST = {
+  Date: '2026-09-21',
+  Station_Code: '42184',
+  Station_Name: 'New Delhi-Ridge',
+  Todays_Forecast_Max_Temp: '34.0',
+  Todays_Forecast_Min_temp: '21.0',
+  Day_2_Max_Temp: '35.0',
+  Day_2_Min_temp: '21.0',
+  Day_3_Max_Temp: '35.0',
+  Day_3_Min_temp: '21.0',
+};
+
+test('day one is today and later days count forward from the bulletin date', () => {
+  const forecast = toForecast(LIVE_FORECAST, 3, '/api/v1/cityforecast');
+  assert.ok(forecast);
+  assert.equal(forecast.days.length, 3);
+  assert.equal(forecast.days[0].date, '2026-09-21');
+  assert.equal(forecast.days[0].maxTemp, 34);
+  assert.equal(forecast.days[1].date, '2026-09-22');
+  assert.equal(forecast.days[1].maxTemp, 35);
+  assert.equal(forecast.days[2].date, '2026-09-23');
+  assert.equal(forecast.provenance.source, 'IMD');
+});
+
+test('rainfall IMD does not publish stays absent, never zero', () => {
+  // A zero here would be a forecast of no rain, which is a claim nobody made.
+  const forecast = toForecast(LIVE_FORECAST, 3, '/api/v1/cityforecast');
+  assert.ok(forecast);
+  for (const day of forecast.days) {
+    assert.equal(day.precipitationSum, null);
+    assert.equal(day.conditionCode, null);
+  }
+});
+
+test('a forecast is asked for only as many days as it was asked for', () => {
+  assert.equal(toForecast(LIVE_FORECAST, 1, '/x')?.days.length, 1);
+  // Beyond what the row carries, days are dropped rather than invented.
+  assert.equal(toForecast(LIVE_FORECAST, 7, '/x')?.days.length, 3);
+});
+
+test('a forecast with no usable day is not a forecast', () => {
+  assert.equal(toForecast({ Date: '2026-09-21' }, 3, '/x'), null);
+  assert.equal(toForecast({ ...LIVE_FORECAST, Date: '' }, 3, '/x'), null);
 });

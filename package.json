@@ -10,7 +10,8 @@
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
     "build:gazetteer": "node scripts/build-gazetteer.mjs",
     "verify:imd": "node scripts/verify-imd.mjs",
-    "build:imd-districts": "node scripts/build-imd-districts.mjs"
+    "build:imd-districts": "node scripts/build-imd-districts.mjs",
+    "build:imd-stations": "node --import tsx scripts/build-imd-stations.mts"
   },
   "dependencies": {
     "next": "16.3.5",

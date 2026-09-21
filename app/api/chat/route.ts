@@ -12,6 +12,7 @@ import { isConfigurationError, mayRevealConfiguration } from '@/lib/errors';
 import { answerStyle, isLanguageCode, replyLanguage } from '@/lib/i18n/languages';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
+import { warningFacts } from '@/lib/chat/facts';
 import { REDIRECT } from '@/lib/chat/scope';
 import type { FactsSnapshot, Grounding, Message, StandingQuery } from '@/lib/chat/types';
 import { logQuery } from '@/lib/log';
@@ -226,6 +227,11 @@ export async function POST(request: Request): Promise<Response> {
         outlook.kind === 'forecast'
           ? { days: outlook.days, units: outlook.units }
           : { unavailable: outlook.statement[chrome] },
+      // Warnings belong in the fact set, not just in `severity`. Severity
+      // reached the advice check but never the model, so asked "is there a
+      // warning?" it answered truthfully about a DATA block that contained
+      // none -- and said no while five were in force.
+      warnings: warningFacts(warnings, chrome),
     };
 
     places.push(resolved.name);

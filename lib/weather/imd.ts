@@ -47,13 +47,17 @@
 import { TTL, cached } from '../cache';
 import { isConfigurationError } from '../errors';
 import { findImdDistrict } from './imd-districts';
+import { nearestStation } from './imd-stations';
 import { forgetImdToken, imdCredentials, imdToken, type ImdCredentials } from './imd-auth';
 import { imdEndpoint, imdFetch } from './imd-transport';
 import { openMeteo } from './open-meteo';
 import type {
   DistrictId,
   Forecast,
+  ForecastDay,
   Location,
+  Measurement,
+  MeasurementKey,
   NoData,
   NoDataReason,
   NoWarning,
@@ -357,6 +361,153 @@ async function fetchWarnings(
 }
 
 /* ------------------------------------------------------------------ */
+/* Readings and the forecast                                           */
+/* ------------------------------------------------------------------ */
+
+const CURRENT_PATH = 'api/v1/current_wx';
+const FORECAST_PATH = 'api/v1/cityforecast';
+
+/**
+ * IMD sends every value as a string, and sends absence several ways: null, an
+ * empty string, and "NIL" for rainfall. All three mean the same thing, and
+ * none of them is a zero.
+ */
+export function numberFrom(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '' || /^(nil|na|n\/a|-)$/i.test(trimmed)) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** "2026-09-21" plus hour "7", read as IST, as an instant. */
+export function observedAt(date: unknown, hour: unknown): string | null {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) return null;
+  const h = numberFrom(hour);
+  const hh = h === null ? '00' : String(Math.trunc(h)).padStart(2, '0');
+  const at = new Date(date.trim() + 'T' + hh + ':00:00' + IST_OFFSET);
+  return Number.isNaN(at.getTime()) ? null : at.toISOString();
+}
+
+/**
+ * One observation row into a Reading.
+ *
+ * conditionCode is deliberately null. IMD sends its own "Weather Code", which
+ * is NOT a WMO code, and every condition word rendered above this file is
+ * keyed on WMO. Passing IMD's number through would print the wrong weather in
+ * words: fluent, plausible, and wrong. The measurements are what IMD actually
+ * measured and they stand on their own.
+ */
+export function toReading(row: RawRow, endpoint: string): Reading | null {
+  const measurements: Measurement[] = [];
+  const add = (key: MeasurementKey, value: unknown, unit: string) => {
+    const n = numberFrom(value);
+    if (n !== null) measurements.push({ key, value: n, unit });
+  };
+
+  add('temperature', row['Temperature'], '°C');
+  add('apparentTemperature', row['Feel Like'], '°C');
+  add('humidity', row['Humidity'], '%');
+  add('windSpeed', row['Wind Speed KMPH'], 'km/h');
+  add('precipitation', row['Last 24 hrs Rainfall'], 'mm');
+
+  // Nothing measured is nothing to report, rather than a reading full of blanks.
+  if (measurements.length === 0) return null;
+
+  const issuedAt = observedAt(row['Date of Observation'], row['Time']);
+  if (!issuedAt) return null;
+
+  return {
+    kind: 'reading',
+    conditionCode: null,
+    measurements,
+    provenance: { source: SOURCE, endpoint, issuedAt, timeBasis: 'issued' },
+  };
+}
+
+/**
+ * One city-forecast row into a Forecast.
+ *
+ * Day one is "Today"; later days are numbered. precipitationSum stays null
+ * because IMD publishes no daily rainfall figure here, and an absent number is
+ * rendered as absent rather than filled in.
+ */
+export function toForecast(row: RawRow, days: number, endpoint: string): Forecast | null {
+  const date = text(row, 'Date');
+  if (!date) return null;
+
+  const out: ForecastDay[] = [];
+  for (let day = 1; day <= Math.min(days, 7); day++) {
+    const when = addDays(date, day - 1);
+    if (!when) continue;
+    const maxTemp =
+      day === 1
+        ? numberFrom(row['Todays_Forecast_Max_Temp'])
+        : numberFrom(row['Day_' + day + '_Max_Temp']);
+    const minTemp =
+      day === 1
+        ? numberFrom(row['Todays_Forecast_Min_temp'])
+        : numberFrom(row['Day_' + day + '_Min_temp']);
+    if (maxTemp === null && minTemp === null) continue;
+    out.push({ date: when, conditionCode: null, maxTemp, minTemp, precipitationSum: null });
+  }
+
+  if (out.length === 0) return null;
+
+  return {
+    kind: 'forecast',
+    days: out,
+    units: { temperature: '°C', precipitation: 'mm' },
+    provenance: {
+      source: SOURCE,
+      endpoint,
+      issuedAt: date + 'T00:00:00' + IST_OFFSET,
+      timeBasis: 'issued',
+    },
+  };
+}
+
+/** One authenticated station request, retrying once past a stale token. */
+async function fetchStation(
+  path: string,
+  id: string,
+  credentials: ImdCredentials,
+): Promise<RawRow | null> {
+  const full = path + '?id=' + encodeURIComponent(id);
+  const call = async (): Promise<Response> => {
+    const token = await imdToken(credentials);
+    return imdFetch(full, {
+      headers: {
+        authorization: 'Bearer ' + token,
+        'x-api-key': credentials.apiKey,
+        accept: 'application/json',
+      },
+    });
+  };
+
+  let response: Response;
+  try {
+    response = await call();
+    if (response.status === 401) {
+      forgetImdToken();
+      response = await call();
+    }
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+
+  try {
+    const payload = await response.json();
+    const rows = warningRows(payload);
+    return rows && rows.length > 0 ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* The source                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -372,12 +523,64 @@ async function fetchWarnings(
 export const imdSource: WeatherSource = {
   name: SOURCE,
 
+  /**
+   * IMD when a station is close enough to speak for this place; otherwise
+   * Open-Meteo, under Open-Meteo's own name.
+   *
+   * The fallback is not a failure state. It is the honest answer when IMD has
+   * no station nearby, and it keeps its own provenance so nothing on screen
+   * claims IMD measured something IMD did not.
+   */
   async getCurrent(location: Location): Promise<Reading | NoData> {
-    return openMeteo.getCurrent(location);
+    let credentials: ImdCredentials;
+    try {
+      credentials = imdCredentials();
+    } catch (error) {
+      if (isConfigurationError(error)) return openMeteo.getCurrent(location);
+      throw error;
+    }
+
+    const near = nearestStation('observation', location.latitude, location.longitude);
+    if (!near) return openMeteo.getCurrent(location);
+
+    const endpoint = imdEndpoint(CURRENT_PATH);
+    const reading = await cached(
+      'imd:current:' + near.station.id,
+      TTL.current,
+      async () => {
+        const row = await fetchStation(CURRENT_PATH, near.station.id, credentials);
+        return row ? toReading(row, endpoint) : null;
+      },
+    );
+
+    // Unreachable, or nothing readable in it. Not a failure the visitor should
+    // wear when a second source can answer.
+    return reading ?? openMeteo.getCurrent(location);
   },
 
   async getForecast(location: Location, days: number): Promise<Forecast | NoData> {
-    return openMeteo.getForecast(location, days);
+    let credentials: ImdCredentials;
+    try {
+      credentials = imdCredentials();
+    } catch (error) {
+      if (isConfigurationError(error)) return openMeteo.getForecast(location, days);
+      throw error;
+    }
+
+    const near = nearestStation('forecast', location.latitude, location.longitude);
+    if (!near) return openMeteo.getForecast(location, days);
+
+    const endpoint = imdEndpoint(FORECAST_PATH);
+    const forecast = await cached(
+      'imd:forecast:' + near.station.id + ':' + days,
+      TTL.daily,
+      async () => {
+        const row = await fetchStation(FORECAST_PATH, near.station.id, credentials);
+        return row ? toForecast(row, days, endpoint) : null;
+      },
+    );
+
+    return forecast ?? openMeteo.getForecast(location, days);
   },
 
   async getWarnings(district: DistrictId): Promise<Warning[] | NoWarning | NoData> {
