@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isCorroborated, isDevanagari, needsIndicGeocoder } from './places';
+import { isCorroborated, isDevanagari, needsIndicGeocoder, usableGeocode } from './places';
 import type { Location } from './types';
 
 /**
@@ -101,4 +101,50 @@ test('a result with nothing to corroborate against is treated as doubtful', () =
   assert.equal(isCorroborated(at('Mumbai', 'Maharashtra')), false);
   assert.equal(isCorroborated(at('Somewhere')), false);
   assert.equal(isCorroborated(at('')), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* What a geocoder is allowed to answer with                           */
+/* ------------------------------------------------------------------ */
+
+function geocoded(name: string, countryCode = 'IN'): Location {
+  return {
+    name,
+    country: countryCode === 'IN' ? 'India' : 'Elsewhere',
+    countryCode,
+    latitude: 26.9,
+    longitude: 81.2,
+    timezone: 'Asia/Kolkata',
+    resolvedBy: 'test',
+    endpoint: '/test',
+  };
+}
+
+test('a geocoder answer from outside India is never used', () => {
+  // IMD issues no warning for anywhere else, so a correct foreign result is
+  // still useless. Unchecked, "London" came back as London, England.
+  assert.equal(usableGeocode('London', geocoded('London', 'GB')), false);
+  assert.equal(usableGeocode('Paris', geocoded('Paris', 'FR')), false);
+});
+
+test('a geocoder answer must be the name that was asked for', () => {
+  // Geocoders rank by their own relevance. "Karachi" came back as "THE
+  // KARACHI CITIZEN chs", a housing society in Mumbai: a real coordinate, a
+  // full provenance line, and not the place anyone meant.
+  assert.equal(usableGeocode('Karachi', geocoded('THE KARACHI CITIZEN chs')), false);
+  assert.equal(usableGeocode('Kolkatta', geocoded('Kolkatta Kati Roll')), false);
+});
+
+test('a geocoder gets no spelling latitude, because it cannot be asked if it was sure', () => {
+  // Repairing a misspelling belongs to the gazetteer, where a correction can
+  // be checked for ambiguity against a closed set. Allowing a geocoder even
+  // one edit turned "Tokyo" into Takyo in Arunachal Pradesh.
+  assert.equal(usableGeocode('Tokyo', geocoded('Takyo')), false);
+  assert.equal(usableGeocode('Nenital', geocoded('Nainital')), false);
+});
+
+test('an exact Indian match is used, spelling and spacing aside', () => {
+  assert.equal(usableGeocode('Nawabganj', geocoded('Nawabganj')), true);
+  assert.equal(usableGeocode('Bara Banki', geocoded('Barabanki')), true);
+  assert.equal(usableGeocode('Barabanki', geocoded('Barabānki')), true);
 });

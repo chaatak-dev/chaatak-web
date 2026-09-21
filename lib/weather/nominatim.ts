@@ -104,7 +104,11 @@ export const nominatimPlaces: PlaceResolver = {
 
     const url =
       `${HOST}${SEARCH_PATH}?q=${encodeURIComponent(trimmed)}` +
-      `&format=jsonv2&limit=1&addressdetails=1` +
+      // layer=address keeps this to places and administrative areas. Without
+      // it Nominatim happily matches points of interest, and "Kolkatta"
+      // returned a fast-food shop in Bengaluru — a real coordinate, 1,500km
+      // from the city asked about, wearing a full provenance line.
+      `&format=jsonv2&limit=1&addressdetails=1&layer=address` +
       `&countrycodes=${Object.keys(COUNTRY_ZONES).join(',')}` +
       `&accept-language=${answerIn}`;
 
