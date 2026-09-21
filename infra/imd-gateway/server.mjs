@@ -32,12 +32,24 @@
  * Environment:
  *   GATEWAY_TOKEN  required. Must match Chaatak's IMD_GATEWAY_TOKEN.
  *   PORT           default 8080.
+ *   HOST           default 0.0.0.0. Set to 127.0.0.1 behind a TLS terminator
+ *                  so the plaintext port is unreachable from off the box.
  */
 
 import { createServer } from 'node:http';
 
 const IMD_ORIGIN = 'https://api.imd.gov.in';
 const PORT = Number(process.env.PORT ?? 8080);
+
+/**
+ * Which interface to listen on.
+ *
+ * Behind a TLS terminator this is 127.0.0.1, so the plaintext port is not
+ * reachable from outside the box at all. A firewall rule is one edit away
+ * from exposing it; a loopback bind is not. Defaults to every interface so
+ * running it directly, as the local tests do, is unchanged.
+ */
+const HOST = process.env.HOST ?? '0.0.0.0';
 const TOKEN = process.env.GATEWAY_TOKEN;
 
 if (!TOKEN) {
@@ -129,6 +141,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  process.stdout.write(`IMD gateway listening on ${PORT}, forwarding to ${IMD_ORIGIN}\n`);
+server.listen(PORT, HOST, () => {
+  process.stdout.write(`IMD gateway listening on ${HOST}:${PORT}, forwarding to ${IMD_ORIGIN}\n`);
 });

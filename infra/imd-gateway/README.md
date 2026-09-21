@@ -48,6 +48,9 @@ After=network-online.target
 [Service]
 Environment=GATEWAY_TOKEN=<the secret from above>
 Environment=PORT=8080
+# Behind a TLS terminator, bind loopback only: a firewall rule is one edit
+# away from exposing the plaintext port, and a loopback bind is not.
+Environment=HOST=127.0.0.1
 ExecStart=/usr/bin/node /opt/imd-gateway/server.mjs
 Restart=always
 User=nobody
