@@ -284,3 +284,28 @@ test('the time window survives a placeless question once a place is supplied', a
   assert.equal(rain.variable, 'rain');
   assert.equal(rain.timeWindow.kind, 'day');
 });
+
+test('an apostrophe does not push a question to the model', async () => {
+  // "whats the weather" parsed and "what's the weather" did not: blanking the
+  // keywords left `'s` standing, and a surviving run is what the extractor
+  // reads as "there might be a place here". It deferred, conservatively and
+  // wrongly, on one of the commonest questions there is.
+  for (const text of ["what's the weather", "how's the weather", "what's the temperature"]) {
+    const r = await patternParser.parse(text, HI);
+    assert.ok(r, `${text}: still deferring to the model`);
+    assert.equal(r.kind, 'cannotParse', text);
+    if (r.kind !== 'cannotParse') return;
+    assert.equal(r.reason, 'noPlace', text);
+  }
+});
+
+test('a place keeps an apostrophe that belongs to it', async () => {
+  // Only contraction tails are blanked, and only with nothing after them, so
+  // a name that genuinely contains an apostrophe survives verbatim.
+  const q = await parsed("will it rain in O'Valley", { lang: 'en' });
+  assert.equal(q.place, "O'Valley");
+});
+
+test('a contraction in a non-weather sentence still defers', async () => {
+  assert.equal(await patternParser.parse("don't tell me", HI), null);
+});

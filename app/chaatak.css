@@ -2587,3 +2587,19 @@ body:has(.chat) {
     overscroll-behavior: contain;
   }
 }
+
+/* The alert status is a footnote on a saved place, not a paragraph. Hindi
+   and English sit on one line so a row stays three lines instead of four —
+   with three places saved, the difference is whether the account menu is
+   still on screen. */
+.places__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.places__status [lang='hi'],
+.places__status-en {
+  display: inline;
+}

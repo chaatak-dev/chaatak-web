@@ -169,3 +169,40 @@ test('the untitled label exists in both interface languages', () => {
   assert.equal(typeof UNTITLED.en, 'string');
   assert.match(UNTITLED.hi, /[ऀ-ॿ]/);
 });
+
+/*
+ * The script rule reaches the sidebar too.
+ *
+ * The route decides which spelling of a place a title carries: the
+ * gazetteer's canonical name is tidier, but it is Latin, and pairing it with
+ * Hindi words produced "Barabanki बारिश कल" — half a label in a script the
+ * person never wrote in. These assert the composition either way; the choice
+ * of spelling is made in the chat route, where both forms are in hand.
+ */
+test('a Devanagari place composes a title that stays in Devanagari', () => {
+  const title = conversationTitle({
+    question: 'बाराबंकी में कल बारिश होगी?',
+    place: 'बाराबंकी',
+    intent: 'forecast',
+    timeWindow: { kind: 'day', offset: 1 },
+    variable: 'rain',
+    lang: 'hi',
+  });
+
+  assert.equal(title, 'बाराबंकी बारिश कल');
+  assert.doesNotMatch(title, /[A-Za-z]/);
+});
+
+test('a Latin place composes a title that stays in Latin', () => {
+  const title = conversationTitle({
+    question: 'will it rain in Barabanki tomorrow',
+    place: 'Barabanki',
+    intent: 'forecast',
+    timeWindow: { kind: 'day', offset: 1 },
+    variable: 'rain',
+    lang: 'en',
+  });
+
+  assert.equal(title, 'Barabanki rain tomorrow');
+  assert.doesNotMatch(title, /[ऀ-ॿ]/);
+});

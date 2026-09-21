@@ -153,8 +153,16 @@ export function LocationsPanel() {
           <li key={location.id} className="places__item">
             <div className="places__what">
               <p className="places__name">{location.placeName}</p>
+              {/*
+                The district, unless the place IS the district — "Barabanki,
+                Barabanki · Uttar Pradesh" says the same word twice and reads
+                like a bug.
+              */}
               <p className="places__where">
-                {[location.district, location.state]
+                {[
+                  location.district === location.placeName ? null : location.district,
+                  location.state,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               </p>

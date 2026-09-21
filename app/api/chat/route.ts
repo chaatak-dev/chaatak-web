@@ -31,6 +31,7 @@ import type { SpeechLang } from '@/lib/speech/types';
 import { OUTLOOK_DAYS } from '@/lib/weather/api';
 import { placeResolver, weatherSource } from '@/lib/weather/source';
 import { conditionFor } from '@/lib/weather/wmo';
+import { scriptOf } from '@/lib/weather/gazetteer/normalise';
 import type { DistrictId, Severity } from '@/lib/weather/types';
 
 type ChatRequest = {
@@ -374,7 +375,18 @@ export async function POST(request: Request): Promise<Response> {
       return ship(reply);
     }
 
-    titlePlace = resolved.name;
+    /*
+     * The place a title carries, in the script the question was written in.
+     *
+     * The gazetteer's canonical name is tidier — correct capitalisation, one
+     * spelling — but it is Latin, and using it for a Devanagari question
+     * produced "Barabanki बारिश कल": half the label in a script the person
+     * did not write in. Never switching script on the user applies to the
+     * sidebar as much as to an answer, so when the two disagree the user's
+     * own words win.
+     */
+    titlePlace =
+      place && scriptOf(place) !== scriptOf(resolved.name) ? place : resolved.name;
 
     const source = weatherSource();
     const district = (resolved.admin2 ?? resolved.name) as DistrictId;

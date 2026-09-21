@@ -121,6 +121,27 @@ function blank(text: string, words: string[]): string {
   return out;
 }
 
+/**
+ * An English contraction's tail is never a place.
+ *
+ * Blanking keywords out of "what's the weather" leaves `'s` standing, and a
+ * surviving run is exactly what the place extractor reads as "something here
+ * might be a place name" — so it deferred to the model, conservatively and
+ * wrongly, on one of the most common questions in the product. "whats the
+ * weather" parsed fine; the apostrophe was the whole difference.
+ *
+ * Blanked as a unit, preserving offsets like every other mask, so the place
+ * that survives is still a verbatim slice of what the person typed.
+ *
+ * Only the suffixes that are actually contractions, and only when nothing
+ * follows them — so O'Sullivan and d'Souza keep their letters.
+ */
+const CONTRACTION_TAIL = /['’](?:s|re|m|ve|ll|t|d)(?![\p{L}\p{M}])/giu;
+
+function blankContractions(text: string): string {
+  return text.replace(CONTRACTION_TAIL, (m) => ' '.repeat(m.length));
+}
+
 const ALL_KEYWORDS = [
   ...TIME_KEYWORDS.flatMap((k) => k.words),
   ...VARIABLE_KEYWORDS.flatMap((k) => k.words),
@@ -134,7 +155,7 @@ const ALL_KEYWORDS = [
  * than elimination.
  */
 export function extractPlace(text: string): string | null {
-  const masked = blank(text, ALL_KEYWORDS);
+  const masked = blankContractions(blank(text, ALL_KEYWORDS));
   const evidence = findPlace(text, masked, masked !== text, GAZETTEER);
   return evidence.kind === 'found' ? evidence.place : null;
 }
@@ -181,7 +202,7 @@ export const patternParser: Parser = {
     const isWarning = WARNING_KEYWORDS.some((w) => matches(trimmed, w));
     const recognisedShape = isWarning || timeWindow !== null || variable !== null;
 
-    const masked = blank(trimmed, ALL_KEYWORDS);
+    const masked = blankContractions(blank(trimmed, ALL_KEYWORDS));
     const evidence = findPlace(trimmed, masked, masked !== trimmed, GAZETTEER);
 
     // Something is standing in the sentence that may or may not be a place.
