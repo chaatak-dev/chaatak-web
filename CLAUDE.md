@@ -257,6 +257,33 @@ is the kind of noise that trains people to ignore us.
 **Secrets stay server-side.** All third-party calls (IMD, Bhashini, LLM) go
 through Next.js API routes. No API key ever reaches the browser.
 
+**Accounts are optional configuration, and identity is never client-supplied.**
+Supabase Auth is the source of truth: every account route starts with
+`getUser()`, which validates the session token against the auth server.
+`getSession()` — which decodes the cookie without checking a signature — is
+not wired up anywhere, because the two look interchangeable and are not.
+
+Ownership is enforced twice, and neither defence relies on the other. Server
+routes reach Postgres as `postgres` and scope every statement by that verified
+user id. Row-level security says the same thing in the database, and is what
+stands between two accounts on Supabase's public PostgREST endpoint, which the
+browser can reach with the anon key it now holds. `npm run verify:rls` proves
+it by becoming the `authenticated` role and trying.
+
+**A saved place and a notification are separate decisions.** Device location
+is requested at the one moment a question cannot be answered without it, and
+never again after a refusal; notification permission is requested only when
+someone presses the control that says what it will do. Granting one never
+implies the other. A coordinate resolves through the existing gazetteer — not
+a second geocoder — and is then discarded: what a monitored location stores is
+the canonical town's coordinate, never the device's fix.
+
+**The three-location limit is a unique constraint, not a count.** `slot` is
+restricted to 1–3 and unique per user, so two requests arriving together
+cannot both become the third. A count read before an insert would have looked
+identical and been wrong in exactly the case worth getting right. Identity is
+the district, because a district is what IMD warns on.
+
 **Stack.** Next.js (App Router, TypeScript) · Node API routes on Vercel ·
 PostgreSQL via Supabase · MapLibre GL · Web Push (VAPID) · Telegram Bot API ·
 Bhashini (ULCA/Dhruva) for ASR/MT/TTS, with the browser Web Speech API as the
@@ -399,11 +426,18 @@ at 360px.
 **Done when:** you can turn off wifi and the app still shows the last known
 warning, honestly labelled as stale.
 
-### Phase 7 — Demo
-Auth, chat history and settings only if time remains; none of them change
-whether this works. Rehearse the demo path. Record the video: a spoken
-question in Hindi returning a real IMD value with a visible issue time, then
-an alert firing unprompted.
+### Phase 7 — Accounts ✅
+Google sign-in through Supabase Auth, chat history, monitored locations and
+automatic "use my location". Guests still ask and are still answered — login
+is required for persistence, never for a forecast. Accounts are optional
+configuration: without the two `NEXT_PUBLIC_SUPABASE_*` values the sign-in
+control is absent and everything else works. Set-up is in
+[`docs/accounts-setup.md`](./docs/accounts-setup.md). Done.
+
+### Phase 8 — Demo
+Rehearse the demo path. Record the video: a spoken question in Hindi
+returning a real IMD value with a visible issue time, then an alert firing
+unprompted.
 
 **Cut without guilt:** maps, ten languages, climate charts, aviation, Docker,
 Kubernetes. None of them change whether a farmer gets a warning.
@@ -418,5 +452,8 @@ Kubernetes. None of them change whether a farmer gets a warning.
 - [ ] Warning taxonomy renders from templates, never live MT
 - [ ] No API key in client code
 - [ ] Alerts deduplicate on `(userId, warningId)`
+- [ ] No account route trusts a user id from the request
+- [ ] RLS denies every table in `public` to `anon` by default
+- [ ] A permission is asked for only when the thing it enables was asked for
 - [ ] Hindi text renders correctly at every breakpoint
 - [ ] Works at 360px, one-handed, in sunlight

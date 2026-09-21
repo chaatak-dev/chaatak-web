@@ -38,6 +38,18 @@ export type Message = {
   at: string;
   /** Only on turns that reported values. Absent on pure conversation. */
   grounding?: Grounding;
+  /**
+   * Set when the place came from the device rather than from the question.
+   *
+   * An answer about somewhere nobody named has to say which somewhere, or it
+   * is a forecast for an unstated place — which is the shape of every wrong
+   * answer this product is arranged to avoid. Shown as "Using Ghaziabad".
+   *
+   * Not persisted: the conversation it belongs to stores the place in the
+   * answer's own provenance, and the question that follows carries it as the
+   * standing place.
+   */
+  via?: { name: string; district: string | null };
 };
 
 /**

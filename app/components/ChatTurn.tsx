@@ -33,6 +33,29 @@ export function ChatTurn({ message }: { message: Message }) {
       </p>
 
       <div className="turn__bubble">
+        {/*
+          The place was taken from the device, not from the question. Stated
+          above the answer rather than buried in it, because "what's the
+          temperature" deserves to be told WHERE before it is told what.
+        */}
+        {message.via ? (
+          <p className="turn__via">
+            <svg viewBox="0 0 12 12" aria-hidden="true">
+              <circle cx="6" cy="6" r="2" fill="currentColor" />
+              <circle
+                cx="6"
+                cy="6"
+                r="4.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+            </svg>
+            <span lang="hi">{message.via.name} की जानकारी</span>
+            <span className="turn__via-en">Using {message.via.name}</span>
+          </p>
+        ) : null}
+
         <p className="turn__text" lang={message.lang}>
           {message.text}
         </p>

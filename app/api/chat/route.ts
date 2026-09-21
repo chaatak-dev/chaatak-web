@@ -10,6 +10,13 @@
 
 import { isConfigurationError, mayRevealConfiguration } from '@/lib/errors';
 import { answerStyle, isLanguageCode, replyLanguage } from '@/lib/i18n/languages';
+import { currentUser } from '@/lib/auth/server';
+import { persistTurn } from '@/lib/accounts/persist';
+import { conversationTitle } from '@/lib/accounts/title';
+import type { ConversationId } from '@/lib/accounts/types';
+import { resolvePoint } from '@/lib/weather/point';
+import { readCoords } from '@/lib/chat/coords';
+import { ASK_FOR_LOCATION } from '@/lib/chat/scope';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
 import { warningFacts } from '@/lib/chat/facts';
@@ -31,6 +38,19 @@ type ChatRequest = {
   lang?: string;
   history?: Message[];
   standing?: StandingQuery | null;
+  /**
+   * Which conversation to write this turn into. Null starts one. Ignored
+   * entirely for a guest — there is nothing to write into.
+   */
+  conversationId?: string | null;
+  /** The client's id for this exchange, so a resend is not a second copy. */
+  clientId?: string;
+  /**
+   * The browser's current position, sent ONLY when the person has just been
+   * asked for it. Used to name a place and then discarded: nothing stores a
+   * coordinate, and a question that named a place ignores this field.
+   */
+  coords?: { latitude?: unknown; longitude?: unknown } | null;
 };
 
 export type ChatReply = {
@@ -38,6 +58,18 @@ export type ChatReply = {
   lang: SpeechLang;
   grounding?: Grounding;
   standing: StandingQuery | null;
+  /**
+   * The question needs a place and none was given. The client may offer the
+   * browser's location — it does not ask for permission until this is true,
+   * and never asks a second time after a refusal.
+   */
+  needsLocation?: true;
+  /** The place was named by a coordinate, so the answer says which place. */
+  usedDeviceLocation?: { name: string; district: string | null };
+  /** Where this turn was saved. Absent for a guest. */
+  conversationId?: string;
+  /** The conversation's title, when this turn is the one that set it. */
+  conversationTitle?: string | null;
   /** Diagnostics, useful in the demo and harmless to expose. */
   meta: { parseLayer: string; fromModel: boolean; gate: string; latencyMs: number };
 };
@@ -54,6 +86,25 @@ export async function POST(request: Request): Promise<Response> {
 
   const question = typeof body.question === 'string' ? body.question.trim() : '';
   if (!question) return Response.json({ error: 'no question' }, { status: 400 });
+
+  /*
+   * Who is asking, if anyone.
+   *
+   * From the session cookie, never from the body — a request cannot name the
+   * account it wants its history written into. A guest is the ordinary case
+   * and costs nothing: `currentUser()` returns null and the turn is simply
+   * not saved.
+   */
+  const askedAt = new Date().toISOString();
+  const user = await currentUser().catch(() => null);
+  const conversationId =
+    typeof body.conversationId === 'string' && body.conversationId
+      ? (body.conversationId as ConversationId)
+      : null;
+  const clientId =
+    typeof body.clientId === 'string' && body.clientId
+      ? body.clientId.slice(0, 80)
+      : `turn:${askedAt}`;
 
   try {
   // Any of the seven. An unrecognised code falls back rather than throwing:
@@ -111,6 +162,67 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  /* ---- shipping an answer, and keeping it if there is an account --- */
+
+  /**
+   * The place a title is made of. The resolved, canonical name once there is
+   * one; what the person typed until then.
+   */
+  let titlePlace: string | null = place || null;
+
+  /**
+   * Every exit from here goes through this.
+   *
+   * It exists so that history is written on ALL of them — the out-of-scope
+   * line, the unresolvable place, and the ordinary answer alike. A
+   * conversation that silently drops the turns it found awkward is worse than
+   * one that keeps everything, because the gap is invisible.
+   *
+   * A guest skips it entirely. So does a failed write: `persistTurn` catches
+   * its own errors and returns null, and the answer ships either way.
+   */
+  const ship = async (reply: ChatReply): Promise<Response> => {
+    /*
+     * A turn that only asks "which place?" is not saved.
+     *
+     * It is a request for input, not an answer, and the same question is
+     * about to be asked again with a coordinate attached. Saving it would put
+     * the question in the transcript twice with a prompt between the two
+     * copies — which is what the person sees on screen for a moment and
+     * exactly what they should not find there a week later.
+     */
+    if (user && !reply.needsLocation) {
+      const saved = await persistTurn({
+        userId: user.id,
+        conversationId,
+        clientId,
+        question,
+        questionLang: lang,
+        askedAt,
+        answer: reply.text,
+        answerLang: reply.lang,
+        grounding: reply.grounding,
+        // Composed from the parse, not from a second model call: the place,
+        // the variable and the day are already known by the time we are here.
+        title: conversationTitle({
+          question,
+          place: titlePlace,
+          intent,
+          timeWindow,
+          variable,
+          lang: chrome,
+        }),
+      });
+
+      if (saved) {
+        reply.conversationId = saved.conversationId;
+        reply.conversationTitle = saved.title;
+      }
+    }
+
+    return Response.json(reply, { headers: { 'cache-control': 'no-store' } });
+  };
+
   /* ---- out of scope: one friendly line, no lecture ---------------- */
 
   if (!inScope) {
@@ -132,7 +244,7 @@ export async function POST(request: Request): Promise<Response> {
         latencyMs: Date.now() - started,
       },
     };
-    return Response.json(reply, { headers: { 'cache-control': 'no-store' } });
+    return ship(reply);
   }
 
   /* ---- fetch, when the answer needs values ------------------------ */
@@ -142,6 +254,64 @@ export async function POST(request: Request): Promise<Response> {
   let severity: Severity | 'unknown' = 'unknown';
   let nextStanding = standing;
   const places: string[] = [];
+
+  /*
+   * "temperature", with no place in the sentence and none carried over.
+   *
+   * The question needs somewhere to be about, so this is where the browser's
+   * location earns its keep — and the ONLY place it is ever asked for. The
+   * permission prompt is not on page load, not on a question that named a
+   * place, and not on a question that needs no place at all. It happens here,
+   * because here is where the answer actually depends on it.
+   *
+   * A coordinate arrives only after the person has been asked once and said
+   * yes. Until then the reply is a question, carrying `needsLocation` so the
+   * interface can offer the prompt beside it.
+   */
+  const point = readCoords(body.coords);
+  const wantsPlace = needsWeather && !place && !standing?.place;
+  let fromDevice: { name: string; district: string | null } | undefined;
+
+  if (wantsPlace && point) {
+    const here = resolvePoint(point.latitude, point.longitude);
+
+    if ('kind' in here) {
+      return ship({
+        text: here.statement[chrome],
+        lang,
+        standing,
+        meta: {
+          parseLayer,
+          fromModel: false,
+          gate: 'skipped',
+          latencyMs: Date.now() - started,
+        },
+      });
+    }
+
+    // The canonical name takes over from here. Everything downstream — the
+    // fetch, the standing query, the title, the follow-up — sees a place name
+    // exactly as if it had been typed, and the coordinate is not referred to
+    // again.
+    place = here.name;
+    titlePlace = here.name;
+    // Said out loud in the reply, because an answer about somewhere the
+    // person did not name has to state which somewhere.
+    fromDevice = { name: here.name, district: here.admin2 ?? null };
+  } else if (wantsPlace) {
+    return ship({
+      text: ASK_FOR_LOCATION[chrome],
+      lang,
+      standing,
+      needsLocation: true,
+      meta: {
+        parseLayer,
+        fromModel: false,
+        gate: 'skipped',
+        latencyMs: Date.now() - started,
+      },
+    });
+  }
 
   if (needsWeather && place) {
     const resolved = await placeResolver().resolve(place);
@@ -166,8 +336,10 @@ export async function POST(request: Request): Promise<Response> {
         lang,
         outcome: 'noData',
       });
-      return Response.json(reply, { headers: { 'cache-control': 'no-store' } });
+      return ship(reply);
     }
+
+    titlePlace = resolved.name;
 
     const source = weatherSource();
     const district = (resolved.admin2 ?? resolved.name) as DistrictId;
@@ -297,6 +469,7 @@ export async function POST(request: Request): Promise<Response> {
     lang,
     grounding,
     standing: nextStanding,
+    usedDeviceLocation: fromDevice,
     meta: {
       parseLayer,
       fromModel: reply.fromModel,
@@ -305,7 +478,7 @@ export async function POST(request: Request): Promise<Response> {
     },
   };
 
-  return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
+  return ship(payload);
   } catch (error) {
     /*
      * A misconfigured deployment is reported AS a misconfiguration.

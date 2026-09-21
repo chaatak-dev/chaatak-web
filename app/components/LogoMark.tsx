@@ -1,12 +1,25 @@
+'use client';
+
 /**
  * The Chaatak mark, inlined so it takes `currentColor` from the header.
  *
  * Sizing rule from the brand: the full mark at 40px and above, the cropped
  * head below — the full mark fills in and stops reading at small sizes. The
  * header uses it at 40px, which is the floor for this version.
+ *
+ * THE CLIP PATH ID IS PER INSTANCE, and that is not fussiness. A `clipPath`
+ * id is document-global, and an SVG whose clip-path reference does not
+ * resolve is not drawn at all. Once the sidebar and the masthead both carried
+ * a mark, the second one referenced the first one's id, failed, and rendered
+ * as the cloud with no bird above it — a logo silently missing half of itself,
+ * on every screen narrower than 1024px.
  */
 
+import { useId } from 'react';
+
 export function LogoMark({ size = 40 }: { size?: number }) {
+  const clipId = `chaatak-logo-clip-${useId()}`;
+
   return (
     <svg
       className="logo-mark"
@@ -17,11 +30,11 @@ export function LogoMark({ size = 40 }: { size?: number }) {
       aria-label="Chaatak"
     >
       <g fill="currentColor">
-        <clipPath id="chaatak-logo-clip">
+        <clipPath id={clipId}>
           <rect x="0" y="0" width="338" height="208" />
         </clipPath>
         <g transform="translate(4 48) scale(0.98)">
-          <g clipPath="url(#chaatak-logo-clip)">
+          <g clipPath={`url(#${clipId})`}>
             <g transform="translate(0,361) scale(0.1,-0.1)">
               <path
                 d="M2952 3524 c-29 -7 -78 -26 -110 -42 l-57 -28 -50 19 c-134 51 -265

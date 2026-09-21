@@ -40,3 +40,18 @@ export const REDIRECT = {
   hi: 'मैं तो मौसम के लिए हूँ — ये मुझसे न पूछिए। मौसम का कुछ पूछना हो तो बताइए।',
   en: "I'm just the weather — that one's outside what I do. Ask me about the weather instead.",
 };
+
+/**
+ * The question needs a place and the question did not name one.
+ *
+ * Asked as a question, not stated as a failure: the person did nothing wrong
+ * by typing "temperature". The interface offers "use my location" beside this
+ * line, so both ways of answering it are one tap away.
+ *
+ * A template, never a model call. There is nothing to reason about here, and
+ * an answer that has not fetched anything has no business spending a request.
+ */
+export const ASK_FOR_LOCATION = {
+  hi: 'किस जगह का बताऊँ? जगह का नाम लिखें, या अपनी जगह इस्तेमाल करने दें।',
+  en: 'Which place should I use? Type a place name, or let me use your location.',
+};

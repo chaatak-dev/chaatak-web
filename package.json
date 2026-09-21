@@ -8,12 +8,17 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
+    "migrate": "node scripts/migrate.mjs",
+    "verify:rls": "node scripts/verify-rls.mjs",
+    "verify:accounts": "node --import tsx scripts/verify-accounts.mts",
     "build:gazetteer": "node scripts/build-gazetteer.mjs",
     "verify:imd": "node scripts/verify-imd.mjs",
     "build:imd-districts": "node scripts/build-imd-districts.mjs",
     "build:imd-stations": "node --import tsx scripts/build-imd-stations.mts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "next": "16.3.5",
     "pg": "^8.23.0",
     "react": "19.2.8",

@@ -2,19 +2,19 @@
  * The Postgres store. This is the selectable default, because "running the job
  * twice sends it once" has to be true across processes, not just within one.
  *
- * Connects through Supabase's transaction pooler (port 6543). Vercel opens a
- * connection per invocation and a direct connection would exhaust the limit,
- * so the pool here is deliberately tiny and short-lived — the pooler is the
- * real pool.
+ * The connection lives in lib/db/pool.ts, shared with the account tables —
+ * one pool per process against the transaction pooler, because a second pool
+ * would double the connections an invocation holds against a limit that
+ * already assumes a small number.
  *
  * Transaction-pooler consequence worth knowing: prepared statements and
  * session state do not survive between queries, so everything below is a
  * single self-contained statement. No `BEGIN`-spanning logic, no `SET`.
  */
 
-import { Pool } from 'pg';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { closeDb, db } from '../db/pool';
 import type {
   AlertStore,
   Channel,
@@ -26,25 +26,8 @@ import type {
 } from './types';
 import type { DistrictId } from '../weather/types';
 
-let pool: Pool | null = null;
-
-function getPool(): Pool {
-  if (pool) return pool;
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error('DATABASE_URL is not set');
-
-  pool = new Pool({
-    connectionString,
-    // Supabase's pooler terminates TLS with its own certificate chain.
-    ssl: { rejectUnauthorized: false },
-    // The pooler is the pool. Holding more than a couple here per invocation
-    // is what exhausts the limit.
-    max: 3,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 10_000,
-  });
-  return pool;
-}
+/** Kept as a local name so the statements below read exactly as they did. */
+const getPool = db;
 
 export const postgresStore: AlertStore = {
   name: 'postgres',
@@ -233,8 +216,7 @@ export const postgresStore: AlertStore = {
   },
 
   async close(): Promise<void> {
-    await pool?.end();
-    pool = null;
+    await closeDb();
   },
 };
 
