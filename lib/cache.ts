@@ -24,6 +24,16 @@ export const TTL = {
   /** Daily aggregates are rebuilt on the model run. */
   daily: 60 * 60 * 1000,
   /**
+   * District warnings.
+   *
+   * Short, and shorter than the alert daemon's polling interval on purpose:
+   * if the cache outlived the poll, a reissued warning could sit unnoticed for
+   * a whole cycle, and silence is the dangerous direction for this one value.
+   * IMD's guidelines ask callers to cache, which this still does -- a burst of
+   * visitors asking about one district is one upstream call.
+   */
+  warnings: 3 * 60 * 1000,
+  /**
    * Parsed queries. Short, because it exists to absorb a burst of people
    * asking the same thing rather than to remember anything for long.
    */

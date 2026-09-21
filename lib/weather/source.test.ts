@@ -65,8 +65,27 @@ test('refusing says what to set instead', () => {
 });
 
 test('an unknown source throws rather than defaulting', () => {
+  // This used to name "imd", back when IMD was the thing that did not exist
+  // yet. It does now, so the example has to be something that genuinely is
+  // not a source.
+  withEnv({ WEATHER_SOURCE: 'meteorological-vibes' }, () => {
+    assert.throws(() => weatherSource(), /Unknown WEATHER_SOURCE "meteorological-vibes"/);
+  });
+});
+
+test('IMD is a real source and may serve visitors', () => {
+  // The whole point of the adapter layer: one config value, nothing above it
+  // changes, and IMD is not synthetic so the user-facing guard lets it past.
   withEnv({ WEATHER_SOURCE: 'imd' }, () => {
-    assert.throws(() => weatherSource(), /Unknown WEATHER_SOURCE "imd"/);
+    assert.equal(weatherSource().name, 'IMD');
+    assert.notEqual(weatherSource().synthetic, true);
+  });
+});
+
+test('the daemon can poll IMD without the app being switched to it', () => {
+  withEnv({ WEATHER_SOURCE: 'open-meteo', WARNING_SOURCE: 'imd' }, () => {
+    assert.equal(warningSource().name, 'IMD');
+    assert.equal(weatherSource().name, 'Open-Meteo');
   });
 });
 

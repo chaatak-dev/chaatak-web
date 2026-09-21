@@ -14,12 +14,14 @@
  * user-facing registry at all, and the guard below keys on the source's own
  * `synthetic` flag, so renaming one cannot slip it through.
  *
- * Phase 5 adds the IMD adapter and sets WEATHER_SOURCE=imd. Nothing above the
- * adapter layer changes — that is the whole point of the interface.
+ * Phase 5 added the IMD adapter. Setting WEATHER_SOURCE=imd switches warnings
+ * to IMD; nothing above the adapter layer changes, which is the whole point of
+ * the interface.
  */
 
 import { ConfigurationError } from '../errors';
 import { fixtureSource } from './fixture';
+import { imdSource } from './imd';
 import { openMeteo } from './open-meteo';
 import { routedPlaces } from './places';
 import type { PlaceResolver, WeatherSource } from './types';
@@ -27,6 +29,10 @@ import type { PlaceResolver, WeatherSource } from './types';
 /** Sources a visitor may be shown. Synthetic sources are not eligible. */
 const REAL_SOURCES: Record<string, WeatherSource> = {
   'open-meteo': openMeteo,
+  // Warnings from IMD, readings still from Open-Meteo and still saying so.
+  // See lib/weather/imd.ts for why that composition is the honest shape while
+  // IMD's station mapping is unverified.
+  imd: imdSource,
 };
 
 /** Everything the alert daemon may poll, including test fixtures. */
