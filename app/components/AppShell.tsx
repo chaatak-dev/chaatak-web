@@ -21,6 +21,42 @@ export function AppShell() {
   const app = useApp();
   const { drawerOpen, setDrawerOpen } = app;
 
+  /*
+   * The shell follows the VISUAL viewport, not the layout one.
+   *
+   * The app is a fixed-height column with the composer pinned to the bottom
+   * and the body not scrolling — which is right until a keyboard appears.
+   * Android is handled declaratively by `interactive-widget: resizes-content`
+   * in the viewport meta; iOS ignores that entirely and draws the keyboard
+   * OVER the layout, leaving the text input someone is typing into
+   * underneath it. Since the body cannot scroll, nothing brings it back.
+   *
+   * visualViewport.height is what the person can actually see. Writing it to
+   * a custom property lets the shell shorten by exactly the height of the
+   * keyboard, so the composer ends up sitting on top of it.
+   *
+   * Absent (older browsers) the property is never set and the CSS falls back
+   * to 100dvh, which is the behaviour this replaces.
+   */
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const apply = () => {
+      document.documentElement.style.setProperty(
+        '--viewport-height',
+        `${Math.round(viewport.height)}px`,
+      );
+    };
+
+    apply();
+    viewport.addEventListener('resize', apply);
+    return () => {
+      viewport.removeEventListener('resize', apply);
+      document.documentElement.style.removeProperty('--viewport-height');
+    };
+  }, []);
+
   // Escape closes it, the same as every other overlay in the product.
   useEffect(() => {
     if (!drawerOpen) return;

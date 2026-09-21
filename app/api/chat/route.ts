@@ -145,6 +145,21 @@ export async function POST(request: Request): Promise<Response> {
     intent = byPattern.intent;
     timeWindow = byPattern.timeWindow;
     variable = byPattern.variable;
+  } else if (byPattern?.kind === 'cannotParse' && byPattern.reason === 'noPlace') {
+    /*
+     * "temperature". "will it rain?". "aaj ka mausam".
+     *
+     * The pattern layer returns noPlace for exactly one situation: it
+     * recognised a weather question — a time word, a variable word or a
+     * warning word — and found no place in the sentence, with none carried
+     * over from the conversation. That is precisely what this route needs to
+     * know, and it used to throw it away and spend an LLM call rediscovering
+     * it, on the most common phrasings in the product.
+     *
+     * The model is the exception path, not the default. A question with no
+     * place in it is not an exception; it is Tuesday.
+     */
+    needsWeather = true;
   } else {
     parseLayer = 'llm';
     const classified = await classify(question, standing);
@@ -295,6 +310,26 @@ export async function POST(request: Request): Promise<Response> {
     // again.
     place = here.name;
     titlePlace = here.name;
+
+    /*
+     * Parse it again, now that there is somewhere for it to be about.
+     *
+     * "weather tomorrow" told the pattern layer everything except where, so
+     * it answered noPlace and kept none of it. Handing the resolved name back
+     * as the remembered place lets the same parser produce the full query —
+     * the day, the variable, the intent — without a model and without this
+     * route reimplementing what it already does.
+     */
+    const withPlace = await patternParser.parse(question, {
+      lang,
+      lastPlace: here.name,
+    });
+
+    if (withPlace?.kind === 'query') {
+      intent = withPlace.intent;
+      timeWindow = withPlace.timeWindow;
+      variable = withPlace.variable;
+    }
     // Said out loud in the reply, because an answer about somewhere the
     // person did not name has to state which somewhere.
     fromDevice = { name: here.name, district: here.admin2 ?? null };

@@ -91,8 +91,14 @@ function RecentChats() {
           <span className="sidebar__heading-en">Recent</span>
         </h2>
         <p className="recents__empty">
-          Sign in to keep your chats. Without an account this conversation
-          lasts as long as the tab.
+          <span lang="hi">
+            बातचीत सहेजने के लिए साइन इन करें। बिना खाते के यह बातचीत सिर्फ़ इस
+            टैब तक रहती है।
+          </span>
+          <span className="recents__empty-en">
+            Sign in to keep your chats. Without an account this conversation
+            lasts as long as the tab.
+          </span>
         </p>
       </section>
     );
@@ -106,7 +112,10 @@ function RecentChats() {
       </h2>
 
       {app.conversations.length === 0 ? (
-        <p className="recents__empty">Nothing yet. Ask something.</p>
+        <p className="recents__empty">
+          <span lang="hi">अभी कुछ नहीं। कुछ पूछें।</span>
+          <span className="recents__empty-en">Nothing yet. Ask something.</span>
+        </p>
       ) : (
         <ul className="recents__list">
           {app.conversations.map((conversation) => (
@@ -153,7 +162,11 @@ function RecentRow({
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
-  const label = title ?? UNTITLED.en;
+  // Hindi is primary in the type hierarchy, in the sidebar as everywhere
+  // else. An unnamed conversation is named in the language the product leads
+  // with, not in its subtitle.
+  const untitled = title === null;
+  const label = title ?? UNTITLED.hi;
 
   if (renaming) {
     return (
@@ -203,6 +216,7 @@ function RecentRow({
         onTouchStart={() => app.prefetchConversation(id)}
         onFocus={() => app.prefetchConversation(id)}
         aria-current={active ? 'true' : undefined}
+        lang={untitled ? 'hi' : undefined}
       >
         {label}
       </button>
@@ -232,7 +246,8 @@ function RecentRow({
               setRenaming(true);
             }}
           >
-            Rename
+            <span lang="hi">नाम बदलें</span>
+            <span className="recents__menu-en">Rename</span>
           </button>
           <button
             type="button"
@@ -243,7 +258,8 @@ function RecentRow({
               setConfirming(true);
             }}
           >
-            Delete
+            <span lang="hi">मिटाएँ</span>
+            <span className="recents__menu-en">Delete</span>
           </button>
         </div>
       )}

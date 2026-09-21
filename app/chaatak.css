@@ -1029,7 +1029,7 @@
 /* The page is a fixed-height app shell here: the transcript scrolls, the
    composer does not. */
 body:has(.chat) {
-  height: 100dvh;
+  height: var(--viewport-height, 100dvh);
   overflow: hidden;
 }
 
@@ -1501,7 +1501,10 @@ body:has(.chat) {
 
 .shell {
   display: flex;
-  height: 100dvh;
+  /* The visible viewport when a keyboard is up, 100dvh when it is not. See
+     the visualViewport effect in AppShell for why the fallback is not
+     enough on iOS. */
+  height: var(--viewport-height, 100dvh);
   overflow: hidden;
 }
 
@@ -2416,5 +2419,171 @@ body:has(.chat) {
 @media (min-width: 1024px) {
   .masthead:has(.masthead__brand) {
     display: none;
+  }
+}
+
+
+/* ------------------------------------------------------------------ */
+/* The sidebar speaks the same way the rest of the product does        */
+/*                                                                     */
+/* Hindi leads, English is the subtitle. The chat surfaces have always  */
+/* worked this way; the account and locations controls shipped in       */
+/* English only, which made the sidebar read as a different product     */
+/* from the conversation beside it.                                     */
+/*                                                                     */
+/* One shared treatment, applied wherever a control gained its Hindi.   */
+/* ------------------------------------------------------------------ */
+
+.recents__empty-en,
+.recents__menu-en,
+.account__action-en,
+.account__why-en,
+.places__status-en,
+.places__submit-en,
+.places__full-en,
+.places__here-en,
+.places__notice-en,
+.alertctl__button-en,
+.alertctl__note-en {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Sentences keep their case and their measure — only labels go to caps. */
+.recents__empty-en,
+.account__why-en,
+.places__full-en,
+.places__notice-en,
+.alertctl__note-en {
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--text-faint);
+}
+
+.recents__empty [lang='hi'],
+.account__why [lang='hi'],
+.places__full [lang='hi'],
+.places__notice [lang='hi'],
+.alertctl__note [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 13px;
+  line-height: var(--leading-deva);
+  color: var(--text-soft);
+}
+
+.recents__menu button,
+.account__action {
+  line-height: 1.25;
+  padding-block: 6px;
+}
+
+.recents__menu button [lang='hi'],
+.account__action [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recents__menu button,
+.account__action {
+  min-height: 46px;
+}
+
+/* The status word keeps its caps treatment; the Hindi sits above it. */
+.places__status [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.places__status--on [lang='hi'] {
+  color: var(--sev-none-line);
+}
+
+.places__submit [lang='hi'],
+.places__here [lang='hi'],
+.alertctl__button [lang='hi'] {
+  display: block;
+  font-family: var(--font-deva);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.places__submit {
+  padding-block: 6px;
+  line-height: 1.2;
+}
+
+.places__submit-en,
+.places__here-en,
+.alertctl__button-en {
+  color: currentColor;
+  opacity: 0.75;
+}
+
+.places__here,
+.alertctl__button {
+  flex-direction: column;
+  align-items: flex-start;
+  padding-block: 8px;
+  line-height: 1.2;
+}
+
+.places__here {
+  flex-direction: row;
+  align-items: center;
+}
+
+.places__here > span {
+  display: block;
+}
+
+/* ------------------------------------------------------------------ */
+/* Touch targets in the drawer                                         */
+/*                                                                     */
+/* The sidebar is a dense list on a mouse and a thumb target on a       */
+/* phone. Below the breakpoint where it becomes a drawer, every row     */
+/* grows to 44px — the floor this product holds itself to, and one the  */
+/* compact desktop list does not need.                                  */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 1023.98px) {
+  .recents__open,
+  .recents__more {
+    min-height: 46px;
+  }
+
+  .recents__more {
+    width: 46px;
+  }
+
+  .places__remove {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar__close {
+    width: 46px;
+    height: 46px;
+  }
+
+  /* A drawer that opens over the conversation should not let the page
+     underneath it scroll away behind it. */
+  .shell--drawer-open .sidebar__scroll {
+    overscroll-behavior: contain;
   }
 }

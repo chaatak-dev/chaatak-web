@@ -56,7 +56,12 @@ export function AccountMenu() {
       <div className="account account--out">
         <SignInButton />
         <p className="account__why">
-          Keeps your chats and up to three monitored places, on every device.
+          <span lang="hi">
+            आपकी बातचीत और तीन निगरानी वाली जगहें, हर डिवाइस पर।
+          </span>
+          <span className="account__why-en">
+            Keeps your chats and up to three monitored places, on every device.
+          </span>
         </p>
         {app.signInError && (
           <p className="account__error" role="status">
@@ -84,7 +89,8 @@ export function AccountMenu() {
               setPending('delete-chats');
             }}
           >
-            Delete all chats
+            <span lang="hi">सारी बातचीत मिटाएँ</span>
+            <span className="account__action-en">Delete all chats</span>
           </button>
 
           <button
@@ -96,7 +102,8 @@ export function AccountMenu() {
               setPending('signout');
             }}
           >
-            Sign out
+            <span lang="hi">साइन आउट</span>
+            <span className="account__action-en">Sign out</span>
           </button>
 
           <button
@@ -108,7 +115,8 @@ export function AccountMenu() {
               setPending('delete-account');
             }}
           >
-            Delete account
+            <span lang="hi">खाता मिटाएँ</span>
+            <span className="account__action-en">Delete account</span>
           </button>
         </div>
       )}

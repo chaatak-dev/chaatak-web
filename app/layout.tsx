@@ -84,6 +84,20 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  /*
+   * The keyboard shrinks the page instead of covering it.
+   *
+   * The app shell is a fixed 100dvh column with the composer pinned to the
+   * bottom and the body not scrolling. By default a software keyboard is
+   * drawn OVER that layout, so on Android the input someone is typing into
+   * ends up underneath it — the one element that has to stay visible.
+   *
+   * `resizes-content` makes the keyboard resize the layout viewport, so the
+   * shell shortens and the composer sits on top of the keyboard where it
+   * belongs. iOS ignores it; the composer there is handled by scrolling it
+   * back into view on focus.
+   */
+  interactiveWidget: 'resizes-content',
   // The browser chrome follows the palette, so a dark page does not sit under
   // a bright status bar at 3am.
   themeColor: [

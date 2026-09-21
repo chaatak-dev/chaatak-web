@@ -218,3 +218,69 @@ test('evidence, when present, is still honoured', async () => {
   assert.equal(extractPlace('बाराबंकी'), 'बाराबंकी');
   assert.equal(extractPlace('अभी मुंबई'), 'मुंबई');
 });
+
+/* ------------------------------------------------------------------ */
+/* The contract /api/chat relies on to keep placeless questions off a   */
+/* model                                                               */
+/*                                                                     */
+/* `noPlace` means ONE thing: this is a weather question and it names   */
+/* no place. The chat route reads it that way — it answers "which       */
+/* place?" or uses the device's location, and spends no model call      */
+/* doing it. If that meaning ever widens, these fail rather than the    */
+/* route quietly asking a coding question where it is.                  */
+/* ------------------------------------------------------------------ */
+
+test('the common placeless questions resolve to noPlace, not to the model', async () => {
+  for (const text of [
+    'temperature',
+    'will it rain?',
+    'weather tomorrow',
+    'aaj ka mausam',
+    'आज का मौसम',
+    'कल बारिश होगी?',
+    'कोई चेतावनी है?',
+  ]) {
+    const r = await patternParser.parse(text, HI);
+    assert.ok(r, `${text}: fell through to the model`);
+    assert.equal(r.kind, 'cannotParse', `${text}: expected cannotParse`);
+    if (r.kind !== 'cannotParse') return;
+    assert.equal(r.reason, 'noPlace', `${text}: expected noPlace`);
+    assert.equal(r.servedBy, 'pattern');
+  }
+});
+
+test('a sentence with no weather word in it is NOT claimed as noPlace', async () => {
+  // The route treats noPlace as "a weather question missing its place", so
+  // anything the pattern layer is unsure about has to keep coming back as
+  // null — that is what routes it to the scope check instead.
+  for (const text of [
+    'should I spray my crops this evening',
+    'मुझे अपनी फसल पर दवा छिड़कनी चाहिए',
+  ]) {
+    assert.equal(await patternParser.parse(text, HI), null, text);
+  }
+});
+
+test('a remembered place means a full query, never noPlace', async () => {
+  // The same questions, once the conversation has somewhere to be about.
+  for (const text of ['temperature', 'weather tomorrow', 'आज का मौसम']) {
+    const q = await parsed(text, { lang: 'hi', lastPlace: 'बाराबंकी' });
+    assert.equal(q.place, 'बाराबंकी');
+    assert.equal(q.placeWasImplied, true);
+    assert.equal(q.servedBy, 'pattern');
+  }
+});
+
+test('the time window survives a placeless question once a place is supplied', async () => {
+  // How "weather tomorrow" keeps its tomorrow after the browser answers with
+  // a coordinate: the route re-parses with the resolved name as the
+  // remembered place, and the day has to come back with it.
+  const q = await parsed('weather tomorrow', { lang: 'en', lastPlace: 'Ghaziabad' });
+  assert.equal(q.timeWindow.kind, 'day');
+  if (q.timeWindow.kind !== 'day') return;
+  assert.equal(q.timeWindow.offset, 1);
+
+  const rain = await parsed('कल बारिश होगी?', { lang: 'hi', lastPlace: 'बाराबंकी' });
+  assert.equal(rain.variable, 'rain');
+  assert.equal(rain.timeWindow.kind, 'day');
+});
