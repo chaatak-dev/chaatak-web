@@ -1,137 +1,190 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { imdDistrictId, severityFromColour, toWarning, warningRows } from './imd';
+import {
+  addDays,
+  hazardCodes,
+  imdDistrictId,
+  issuedAtFrom,
+  rowToWarnings,
+  severityFromColour,
+  warningRows,
+} from './imd';
 import type { DistrictId } from './types';
 
-const DISTRICT = '573' as DistrictId;
+const DISTRICT = 'Barabanki' as DistrictId;
 const ENDPOINT = '/api/v1/districtwarning';
 
-/* ---- severity --------------------------------------------------------- */
+/** One real row, copied from a live response for Obj_id 573. */
+const LIVE_ROW = {
+  Obj_id: '573',
+  Date: '2026-09-21',
+  District: 'NICOBAR',
+  Day_1: '2,4,8',
+  Day_2: '4,8',
+  Day_3: '4,8',
+  Day_4: '4,8',
+  Day_5: '1',
+  Day1_Color: '3',
+  Day2_Color: '3',
+  Day3_Color: '3',
+  Day4_Color: '3',
+  Day5_Color: '4',
+  updated_at: '2026-09-21 07:53:58',
+};
 
-test('IMD colours map onto the severity scale the templates are keyed on', () => {
-  assert.equal(severityFromColour('green'), 'none');
-  assert.equal(severityFromColour('yellow'), 'watch');
-  assert.equal(severityFromColour('orange'), 'alert');
-  assert.equal(severityFromColour('red'), 'warning');
+/* ---- the colour scale, which runs downwards --------------------------- */
+
+test('IMD colours map DOWNWARDS onto severity', () => {
+  // The single most dangerous line in the adapter. Reading this the intuitive
+  // way round renders every green day as orange and every red one as no
+  // warning at all. Established from 3,590 day-slots across all 718
+  // districts, because IMD publishes no legend endpoint.
+  assert.equal(severityFromColour('1'), 'warning'); // red
+  assert.equal(severityFromColour('2'), 'alert'); //   orange
+  assert.equal(severityFromColour('3'), 'watch'); //   yellow
+  assert.equal(severityFromColour('4'), 'none'); //    green
 });
 
-test('colour matching survives the casing and padding a feed actually sends', () => {
-  assert.equal(severityFromColour('ORANGE'), 'alert');
-  assert.equal(severityFromColour('  Red '), 'warning');
+test('a colour arrives as a string or a number and means the same thing', () => {
+  assert.equal(severityFromColour(3), 'watch');
+  assert.equal(severityFromColour(' 1 '), 'warning');
 });
 
-test('an unrecognised colour is refused, never rounded to the nearest one', () => {
-  // Guessing that an unknown word means orange is how a real warning gets
-  // softened, and softening is the one failure the verification gate cannot
-  // catch. Refusing loses a warning loudly; guessing loses one silently.
-  for (const value of ['amber', 'severe', 'crimson', '', 'null', null, 7, undefined, {}]) {
-    assert.equal(severityFromColour(value), null, String(value));
+test('a colour outside the four is refused, never rounded to the nearest', () => {
+  for (const value of ['0', '5', '', 'red', 'orange', null, undefined, {}, []]) {
+    assert.equal(severityFromColour(value), null, JSON.stringify(value));
   }
 });
 
-/* ---- the district identifier ------------------------------------------ */
+/* ---- hazard codes ----------------------------------------------------- */
 
-test('a numeric IMD district id passes through', () => {
-  assert.equal(imdDistrictId('573' as DistrictId), '573');
-  assert.equal(imdDistrictId(' 573 ' as DistrictId), '573');
+test('code 1 is IMD saying nothing is in force, not a hazard', () => {
+  assert.deepEqual(hazardCodes('1'), []);
+  assert.deepEqual(hazardCodes('2,4,8'), ['2', '4', '8']);
+  assert.deepEqual(hazardCodes('4, 8'), ['4', '8']);
+  assert.deepEqual(hazardCodes(''), []);
+  assert.deepEqual(hazardCodes(null), []);
 });
 
-test('a district NAME is refused rather than guessed at', () => {
-  // Turning "Barabanki" into a number without IMD's own district list would
-  // be inventing the single field that decides whose warning is shown.
-  for (const name of ['Barabanki', 'बाराबंकी', '', '57a', 'district-573']) {
-    assert.equal(imdDistrictId(name as DistrictId), null, name);
-  }
+/* ---- dates ------------------------------------------------------------ */
+
+test('the five days are counted from the bulletin date', () => {
+  assert.equal(addDays('2026-09-21', 0), '2026-09-21');
+  assert.equal(addDays('2026-09-21', 4), '2026-09-25');
+  // Month and year boundaries, which is where naive arithmetic breaks.
+  assert.equal(addDays('2026-09-30', 1), '2026-10-01');
+  assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+  assert.equal(addDays('not-a-date', 1), null);
 });
 
-/* ---- reading the payload ---------------------------------------------- */
-
-test('rows are found whether IMD sends a bare array or wraps it', () => {
-  assert.deepEqual(warningRows([{ a: 1 }]), [{ a: 1 }]);
-  assert.deepEqual(warningRows({ data: [{ a: 1 }] }), [{ a: 1 }]);
-  assert.deepEqual(warningRows({ warnings: [{ a: 1 }] }), [{ a: 1 }]);
-  assert.deepEqual(warningRows([]), []);
+test('IMD stamps its bulletin time in IST with no offset, so one is supplied', () => {
+  // Read as UTC this would be five and a half hours wrong, which puts a
+  // warning in the wrong part of the day.
+  assert.equal(issuedAtFrom('2026-09-21 07:53:58'), '2026-09-21T02:23:58.000Z');
+  assert.equal(issuedAtFrom('nonsense'), null);
+  assert.equal(issuedAtFrom(null), null);
 });
 
-test('an envelope with no rows in it is not read as an empty list', () => {
-  // null means "we did not understand this", which becomes noData. An empty
-  // array means "IMD says nothing is in force", which is noWarning. Collapsing
-  // the first into the second would turn a parsing failure into an all-clear.
+/* ---- the payload ------------------------------------------------------ */
+
+test('IMD returns a bare array, and anything else is not understood', () => {
+  assert.deepEqual(warningRows([LIVE_ROW]), [LIVE_ROW]);
+  // null means "we did not understand this" and becomes noData. An empty
+  // array means IMD said nothing is in force. Collapsing the first into the
+  // second would turn a parsing failure into an all-clear.
   assert.equal(warningRows({ status: 'ok' }), null);
   assert.equal(warningRows('nope'), null);
   assert.equal(warningRows(null), null);
-  assert.equal(warningRows(42), null);
 });
 
-test('a complete row becomes a warning carrying IMD as its source', () => {
-  const warning = toWarning(
-    {
-      colour: 'orange',
-      warning_code: 'HEAVY_RAIN',
-      valid_from: '2026-09-21T06:00:00Z',
-      valid_to: '2026-09-21T18:00:00Z',
-      id: 'w-1',
-    },
-    DISTRICT,
-    ENDPOINT,
-    '2026-09-21T05:30:00Z',
-  );
+test('a live row becomes one warning per day that has one', () => {
+  const { warnings, readable } = rowToWarnings(LIVE_ROW, DISTRICT, ENDPOINT);
+  assert.equal(readable, true);
+  // Days 1-4 are colour 3; day 5 is green and yields nothing.
+  assert.equal(warnings.length, 4);
 
-  assert.ok(warning);
-  assert.equal(warning.severity, 'alert');
-  assert.equal(warning.code, 'HEAVY_RAIN');
-  assert.equal(warning.district, DISTRICT);
-  assert.equal(warning.provenance.source, 'IMD');
-  assert.equal(warning.provenance.issuedAt, '2026-09-21T05:30:00Z');
-  assert.equal(warning.provenance.timeBasis, 'issued');
+  const [first] = warnings;
+  assert.equal(first.severity, 'watch');
+  assert.equal(first.code, '2,4,8');
+  assert.equal(first.district, DISTRICT);
+  assert.equal(first.validFrom, '2026-09-21T00:00:00+05:30');
+  assert.equal(first.validTo, '2026-09-22T00:00:00+05:30');
+  assert.equal(first.provenance.source, 'IMD');
+  assert.equal(first.provenance.issuedAt, '2026-09-21T02:23:58.000Z');
+  assert.equal(first.provenance.timeBasis, 'issued');
+
+  // Day four is still within the five-day window.
+  assert.equal(warnings[3].validFrom, '2026-09-24T00:00:00+05:30');
 });
 
-test('without a bulletin time the provenance says so rather than inventing one', () => {
-  const warning = toWarning(
-    {
-      colour: 'red',
-      code: 'CYCLONE',
-      from: '2026-09-21T06:00:00Z',
-      to: '2026-09-22T06:00:00Z',
-    },
-    DISTRICT,
-    ENDPOINT,
-    null,
-  );
-  assert.ok(warning);
-  // Falls back to the validity start and labels the basis honestly, instead
-  // of stamping "issued" on a time nobody issued.
-  assert.equal(warning.provenance.timeBasis, 'valid');
-  assert.equal(warning.provenance.issuedAt, '2026-09-21T06:00:00Z');
-});
-
-test('a row missing anything a warning needs is dropped, not defaulted', () => {
-  // Every default available here is a claim about weather: a severity nobody
-  // issued, or a validity window nobody set.
-  const incomplete = [
-    { warning_code: 'X', valid_from: 'a', valid_to: 'b' },
-    { colour: 'orange', valid_from: 'a', valid_to: 'b' },
-    { colour: 'orange', warning_code: 'X', valid_to: 'b' },
-    { colour: 'orange', warning_code: 'X', valid_from: 'a' },
-    { colour: 'purple', warning_code: 'X', valid_from: 'a', valid_to: 'b' },
-    {},
-  ];
-  for (const row of incomplete) {
-    assert.equal(toWarning(row, DISTRICT, ENDPOINT, null), null, JSON.stringify(row));
+test('a green day produces no warning at all', () => {
+  const green = { ...LIVE_ROW };
+  for (let d = 1; d <= 5; d++) {
+    (green as Record<string, string>)[`Day${d}_Color`] = '4';
+    (green as Record<string, string>)[`Day_${d}`] = '1';
   }
+  const { warnings, readable } = rowToWarnings(green, DISTRICT, ENDPOINT);
+  assert.equal(warnings.length, 0);
+  // Understood, and it said nothing is in force. That is noWarning, which is
+  // a different answer from noData.
+  assert.equal(readable, true);
 });
 
-test('an id is derived rather than left blank when IMD omits one', () => {
-  // Dispatch deduplicates on the warning id, so a blank one would make two
-  // different warnings look like the same one.
-  const warning = toWarning(
-    { colour: 'yellow', code: 'THUNDER', from: '2026-09-21', to: '2026-09-22' },
-    DISTRICT,
-    ENDPOINT,
-    null,
-  );
-  assert.ok(warning);
-  assert.ok(warning.id.includes('573'));
-  assert.ok(warning.id.includes('THUNDER'));
+test('a row nobody can read is not mistaken for an all-clear', () => {
+  const garbled = { ...LIVE_ROW };
+  for (let d = 1; d <= 5; d++) {
+    (garbled as Record<string, string>)[`Day${d}_Color`] = '9';
+  }
+  const { warnings, readable } = rowToWarnings(garbled, DISTRICT, ENDPOINT);
+  assert.equal(warnings.length, 0);
+  // The distinction the caller turns into noData rather than "nothing in
+  // force". Silence about a cyclone is the dangerous direction.
+  assert.equal(readable, false);
+});
+
+test('a row with no bulletin date yields nothing', () => {
+  const { warnings, readable } = rowToWarnings({ ...LIVE_ROW, Date: '' }, DISTRICT, ENDPOINT);
+  assert.equal(warnings.length, 0);
+  assert.equal(readable, false);
+});
+
+test('a day with a severity but no hazard code still becomes a warning', () => {
+  // IMD colouring a day without listing a code is IMD saying something is in
+  // force. Dropping it because the code list was empty would lose it.
+  const row = { ...LIVE_ROW, Day_1: '', Day1_Color: '1' };
+  const { warnings } = rowToWarnings(row, DISTRICT, ENDPOINT);
+  assert.equal(warnings[0].severity, 'warning');
+  assert.equal(warnings[0].code, 'unspecified');
+});
+
+test('warning ids are stable across polls so dispatch deduplicates', () => {
+  const a = rowToWarnings(LIVE_ROW, DISTRICT, ENDPOINT).warnings;
+  const b = rowToWarnings(LIVE_ROW, DISTRICT, ENDPOINT).warnings;
+  assert.deepEqual(a.map((w) => w.id), b.map((w) => w.id));
+  assert.equal(new Set(a.map((w) => w.id)).size, a.length, 'ids collided within one row');
+  assert.match(a[0].id, /^imd:573:2026-09-21:d1$/);
+});
+
+/* ---- the district join ------------------------------------------------ */
+
+test('a numeric Obj_id passes straight through', () => {
+  assert.equal(imdDistrictId('573' as DistrictId), '573');
+});
+
+test('a district name resolves against IMD own register', () => {
+  // IMD spells several districts its own way, and refusing those would lose
+  // real warnings for real places.
+  assert.equal(imdDistrictId('Barabanki' as DistrictId), '440');
+  assert.equal(imdDistrictId('Nainital' as DistrictId), '516');
+  assert.equal(imdDistrictId('Kolkata' as DistrictId), '237');
+  assert.equal(imdDistrictId('Tirunelveli' as DistrictId), '35');
+});
+
+test('a district IMD does not cover resolves to nothing, not to a neighbour', () => {
+  // IMD's register holds 718 districts and does not cover the whole country.
+  // Saying so is honest; attaching the nearest district's warning is not.
+  for (const name of ['Zzzznotadistrict', '', 'Atlantis']) {
+    assert.equal(imdDistrictId(name as DistrictId), null, name);
+  }
 });

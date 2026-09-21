@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "node --import tsx --test \"lib/**/*.test.ts\"",
     "build:gazetteer": "node scripts/build-gazetteer.mjs",
-    "verify:imd": "node scripts/verify-imd.mjs"
+    "verify:imd": "node scripts/verify-imd.mjs",
+    "build:imd-districts": "node scripts/build-imd-districts.mjs"
   },
   "dependencies": {
     "next": "16.3.5",

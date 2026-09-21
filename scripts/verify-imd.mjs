@@ -177,6 +177,56 @@ async function main() {
     record(`districtwarning?id=${WARNING_ID}`, 'FAIL', error.message);
   }
 
+  /* 3b. The colour scale, re-derived ------------------------------------ */
+  //
+  // The adapter reads IMD's numeric colour as DESCENDING severity: 1 red,
+  // 4 green. IMD publishes no legend endpoint, so that was established from
+  // the data. An inference that nobody rechecks is just a guess with tenure,
+  // so it is re-derived here against the whole live bulletin.
+  try {
+    const { res } = await call('api/v1/districtwarning', authed);
+    const all = res.ok ? await res.json() : null;
+    if (!Array.isArray(all) || all.length === 0) {
+      record('colour scale', 'UNVERIFIED', 'could not read the full bulletin');
+    } else {
+      const slots = new Map();
+      const codeOne = new Map();
+      for (const row of all) {
+        for (let d = 1; d <= 5; d++) {
+          const colour = String(row[`Day${d}_Color`] ?? '');
+          if (!colour) continue;
+          slots.set(colour, (slots.get(colour) ?? 0) + 1);
+          const codes = String(row[`Day_${d}`] ?? '').split(',').map((c) => c.trim());
+          if (codes.includes('1')) codeOne.set(colour, (codeOne.get(colour) ?? 0) + 1);
+        }
+      }
+      const seen = [...slots.keys()].sort();
+      record('colour values seen', 'PASS', `${seen.join(', ')} over ${all.length} districts`);
+
+      // Severity must get rarer as it gets worse. If 1 ever stops being the
+      // rarest, the scale is not what the adapter believes.
+      const counts = ['1', '2', '3', '4'].map((c) => slots.get(c) ?? 0);
+      const descending = counts.every((n, i) => i === 0 || n >= counts[i - 1]);
+      record(
+        'severity gets rarer as it gets worse',
+        descending ? 'PASS' : 'FAIL',
+        `1:${counts[0]} 2:${counts[1]} 3:${counts[2]} 4:${counts[3]} day-slots`,
+      );
+
+      // Code 1 means "no warning" and must sit overwhelmingly under colour 4.
+      const totalOne = [...codeOne.values()].reduce((a, b) => a + b, 0);
+      const underFour = codeOne.get('4') ?? 0;
+      const share = totalOne ? underFour / totalOne : 0;
+      record(
+        'colour 4 is green (no warning)',
+        share > 0.95 ? 'PASS' : 'FAIL',
+        `${(share * 100).toFixed(1)}% of "no warning" codes sit under colour 4`,
+      );
+    }
+  } catch (error) {
+    record('colour scale', 'UNVERIFIED', error.message);
+  }
+
   /* 4. Find the district list ------------------------------------------- */
   //
   // The adapter needs a district NAME to become IMD's numeric object id, and
@@ -184,6 +234,7 @@ async function main() {
   // an unauthenticated probe returns 401 for everything and tells us nothing;
   // authenticated, a 404 finally means "no such endpoint".
   const candidates = [
+    'api/v1/districtwarning',
     'api/v1/districtlist',
     'api/v1/districts',
     'api/v1/district',
