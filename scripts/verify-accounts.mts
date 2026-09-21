@@ -81,7 +81,10 @@ try {
 
   let profile = await store.readProfile(userId);
   assert(profile?.name === 'Test Person', 'the profile is mirrored from the identity');
-  assert(profile?.lang === 'hi', 'the reply language defaults to Hindi');
+  assert(profile?.avatarUrl === 'https://example.invalid/a.png', 'the avatar is a URL');
+  assert(profile?.languages.ui === 'auto', 'the interface language starts on auto');
+  assert(profile?.languages.assistant === 'auto', 'the assistant language starts on auto');
+  assert(profile?.languages.voice === 'auto', 'the voice language starts on auto');
 
   // Signing in again with a changed display name follows the account.
   await store.upsertProfile({
@@ -93,9 +96,20 @@ try {
   profile = await store.readProfile(userId);
   assert(profile?.name === 'Renamed Person', 'a changed name follows on the next sign-in');
 
-  await store.upsertProfile({ id: userId, email, name: 'Renamed Person', avatarUrl: null }, 'en');
+  // A missing avatar is null, not the string that used to share its line with
+  // the language default and reached an <img> as src="hi".
+  assert(profile?.avatarUrl === null, 'a missing avatar is null, never a stray value');
+
+  await store.writeLanguagePreferences(
+    userId,
+    { ui: 'en', assistant: 'hi', voice: 'ta' },
+    'en',
+  );
   profile = await store.readProfile(userId);
-  assert(profile?.lang === 'en', 'the reply language can be set');
+  assert(profile?.languages.ui === 'en', 'the interface language is stored');
+  assert(profile?.languages.assistant === 'hi', 'the assistant language is stored separately');
+  assert(profile?.languages.voice === 'ta', 'and so is the voice language');
+  assert(profile?.lang === 'en', 'the alert language follows the interface');
 
   /* ---- conversations and messages --------------------------------- */
 

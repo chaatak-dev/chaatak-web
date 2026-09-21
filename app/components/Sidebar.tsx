@@ -18,7 +18,6 @@ import { AccountMenu } from './AccountMenu';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LocationsPanel } from './LocationsPanel';
 import { LogoMark } from './LogoMark';
-import { UNTITLED } from '@/lib/accounts/title';
 
 export function Sidebar() {
   const app = useApp();
@@ -29,11 +28,17 @@ export function Sidebar() {
         <span className="sidebar__mark">
           <LogoMark size={40} />
         </span>
+        {/*
+          The second line is the romanisation, and it only means anything
+          under the Devanagari one. In English it said "Chaatak" twice.
+        */}
         <p className="sidebar__brand">
-          <span lang="hi" className="sidebar__brand-hi">
-            चातक
-          </span>
-          <span className="sidebar__brand-en">Chaatak</span>
+          <span className="sidebar__brand-hi">{app.t('brand.name')}</span>
+          {app.languages.ui !== 'en' && (
+            <span className="sidebar__brand-en" lang="en">
+              {app.t('brand.wordmark')}
+            </span>
+          )}
         </p>
 
         {/* Only reachable when the sidebar is a drawer; hidden by CSS above. */}
@@ -41,7 +46,7 @@ export function Sidebar() {
           type="button"
           className="sidebar__close"
           onClick={() => app.setDrawerOpen(false)}
-          aria-label="Close menu"
+          aria-label={app.t('nav.close')}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path
@@ -65,8 +70,7 @@ export function Sidebar() {
             strokeLinecap="round"
           />
         </svg>
-        <span lang="hi">नई बातचीत</span>
-        <span className="sidebar__new-en">New chat</span>
+        <span>{app.t('nav.newChat')}</span>
       </button>
 
       <div className="sidebar__scroll">
@@ -86,36 +90,18 @@ function RecentChats() {
     if (!app.configured) return null;
     return (
       <section className="recents">
-        <h2 className="sidebar__heading">
-          <span lang="hi">पिछली बातचीत</span>
-          <span className="sidebar__heading-en">Recent</span>
-        </h2>
-        <p className="recents__empty">
-          <span lang="hi">
-            बातचीत सहेजने के लिए साइन इन करें। बिना खाते के यह बातचीत सिर्फ़ इस
-            टैब तक रहती है।
-          </span>
-          <span className="recents__empty-en">
-            Sign in to keep your chats. Without an account this conversation
-            lasts as long as the tab.
-          </span>
-        </p>
+        <h2 className="sidebar__heading">{app.t('nav.recent')}</h2>
+        <p className="recents__empty">{app.t('recents.emptySignedOut')}</p>
       </section>
     );
   }
 
   return (
     <section className="recents">
-      <h2 className="sidebar__heading">
-        <span lang="hi">पिछली बातचीत</span>
-        <span className="sidebar__heading-en">Recent</span>
-      </h2>
+      <h2 className="sidebar__heading">{app.t('nav.recent')}</h2>
 
       {app.conversations.length === 0 ? (
-        <p className="recents__empty">
-          <span lang="hi">अभी कुछ नहीं। कुछ पूछें।</span>
-          <span className="recents__empty-en">Nothing yet. Ask something.</span>
-        </p>
+        <p className="recents__empty">{app.t('recents.empty')}</p>
       ) : (
         <ul className="recents__list">
           {app.conversations.map((conversation) => (
@@ -162,11 +148,10 @@ function RecentRow({
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
-  // Hindi is primary in the type hierarchy, in the sidebar as everywhere
-  // else. An unnamed conversation is named in the language the product leads
-  // with, not in its subtitle.
-  const untitled = title === null;
-  const label = title ?? UNTITLED.hi;
+  // An unnamed conversation is named in the interface language, like every
+  // other piece of chrome. The document's `lang` already declares which that
+  // is, so the row needs no tag of its own.
+  const label = title ?? app.t('nav.untitled');
 
   if (renaming) {
     return (
@@ -192,7 +177,7 @@ function RecentRow({
                 setRenaming(false);
               }
             }}
-            aria-label="Conversation name"
+            aria-label={app.t('nav.conversationName')}
             maxLength={120}
           />
         </form>
@@ -216,7 +201,6 @@ function RecentRow({
         onTouchStart={() => app.prefetchConversation(id)}
         onFocus={() => app.prefetchConversation(id)}
         aria-current={active ? 'true' : undefined}
-        lang={untitled ? 'hi' : undefined}
       >
         {label}
       </button>
@@ -224,7 +208,7 @@ function RecentRow({
       <button
         type="button"
         className="recents__more"
-        aria-label={`Actions for ${label}`}
+        aria-label={app.t('nav.actionsFor', { name: label })}
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((was) => !was)}
       >
@@ -246,8 +230,7 @@ function RecentRow({
               setRenaming(true);
             }}
           >
-            <span lang="hi">नाम बदलें</span>
-            <span className="recents__menu-en">Rename</span>
+            {app.t('nav.rename')}
           </button>
           <button
             type="button"
@@ -258,20 +241,16 @@ function RecentRow({
               setConfirming(true);
             }}
           >
-            <span lang="hi">मिटाएँ</span>
-            <span className="recents__menu-en">Delete</span>
+            {app.t('nav.delete')}
           </button>
         </div>
       )}
 
       <ConfirmDialog
         open={confirming}
-        headline="यह बातचीत मिटाएँ?"
-        headlineEn="Delete this chat?"
-        body="इस बातचीत के सारे संदेश हमेशा के लिए मिट जाएँगे।"
-        bodyEn="Every message in this conversation goes, permanently."
-        confirmLabel="मिटाएँ"
-        confirmLabelEn="Delete"
+        headline="confirm.deleteChat.headline"
+        body="confirm.deleteChat.body"
+        confirmLabel="confirm.deleteChat.confirm"
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false);

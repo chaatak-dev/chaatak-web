@@ -11,11 +11,12 @@
  * before the offline notice arrives is the same lie with a shorter life.
  */
 
+'use client';
+
 import { ageLabel } from '@/lib/offline/cache';
-import type { SpeechLang } from '@/lib/speech/types';
+import { useApp } from './AppState';
 
 type Props = {
-  lang: SpeechLang;
   ageMinutes: number;
   /** True once the cached warning's own validity window has elapsed. */
   expired: boolean;
@@ -26,19 +27,19 @@ type Props = {
 };
 
 export function StaleBand({
-  lang,
   ageMinutes,
   expired,
   source,
   issuedAtLabel,
   offline,
 }: Props) {
-  // One label per language. Reusing a single one put "40 मिनट पहले" into the
-  // English sentence, which is exactly the kind of seam that makes a warning
-  // look machine-assembled at the moment it most needs to be trusted.
-  const ageHi = ageLabel(ageMinutes, 'hi');
-  const ageEn = ageLabel(ageMinutes, 'en');
-  const ageOwn = lang === 'hi' ? ageHi : ageEn;
+  const { t, languages } = useApp();
+
+  // The age is written in the same language as the sentence around it.
+  // Reusing one label put "40 मिनट पहले" into an English sentence, which is
+  // exactly the kind of seam that makes a warning look machine-assembled at
+  // the moment it most needs to be trusted.
+  const age = ageLabel(ageMinutes, languages.ui);
 
   /*
    * An expired warning is NOT shown as a warning. A red bulletin that ended at
@@ -49,22 +50,11 @@ export function StaleBand({
   if (expired) {
     return (
       <section className="absence absence--nodata stale stale--expired" role="status">
-        <p className="absence__label">
-          <span lang="hi" className="absence__label-hi">
-            चेतावनी की अवधि बीत चुकी है
-          </span>
-          <span className="absence__label-en">Warning expired</span>
-        </p>
-
-        <p lang="hi" className="absence__statement">
-          यह चेतावनी {issuedAtLabel} बजे तक की थी और अब लागू नहीं है।
-          {offline ? ' आप ऑफ़लाइन हैं, इसलिए अभी की जानकारी नहीं बता सकते।' : ''}
-        </p>
-        <p className="absence__statement-en">
-          This warning ran until {issuedAtLabel} and is no longer in force.
-          {offline
-            ? ' You are offline, so we cannot tell you what is current.'
-            : ''}
+        <p className="absence__label">{t('stale.expired')}</p>
+        <p className="absence__statement">
+          {t(offline ? 'stale.expiredBodyOffline' : 'stale.expiredBody', {
+            time: issuedAtLabel,
+          })}
         </p>
       </section>
     );
@@ -72,20 +62,10 @@ export function StaleBand({
 
   return (
     <section className="stale" role="status">
-      <p className="stale__label">
-        <span lang="hi" className="stale__label-hi">
-          पुरानी जानकारी
-        </span>
-        <span className="stale__label-en">{offline ? 'Offline' : 'Saved'}</span>
-      </p>
+      <p className="stale__label">{t(offline ? 'stale.offline' : 'stale.saved')}</p>
 
-      <p lang="hi" className="stale__statement">
-        {offline ? 'आप ऑफ़लाइन हैं। ' : ''}
-        यह {ageHi} की जानकारी है।
-      </p>
-      <p className="stale__statement-en">
-        {offline ? 'You are offline. ' : ''}
-        This is from {ageEn}.
+      <p className="stale__statement">
+        {t(offline ? 'stale.bodyOffline' : 'stale.body', { age })}
       </p>
 
       {/*
@@ -94,7 +74,7 @@ export function StaleBand({
         current; an age alone hides which bulletin it was.
       */}
       <p className="stale__provenance">
-        {source} · {issuedAtLabel} · {ageOwn}
+        {source} · {issuedAtLabel} · {age}
       </p>
     </section>
   );

@@ -16,6 +16,7 @@ import { conversationTitle } from '@/lib/accounts/title';
 import type { ConversationId } from '@/lib/accounts/types';
 import { resolvePoint } from '@/lib/weather/point';
 import { readCoords } from '@/lib/chat/coords';
+import { readPreference } from '@/lib/i18n/preferences';
 import { ASK_FOR_LOCATION } from '@/lib/chat/scope';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
@@ -52,6 +53,15 @@ type ChatRequest = {
    * coordinate, and a question that named a place ignores this field.
    */
   coords?: { latitude?: unknown; longitude?: unknown } | null;
+  /**
+   * The language to answer in, when the person has named one.
+   *
+   * `auto` — the default — means mirror whatever they wrote, which is what
+   * this route has always done. An explicit value is a setting they went and
+   * changed, so it is honoured rather than second-guessed by the script of
+   * the question.
+   */
+  assistantLang?: string;
 };
 
 export type ChatReply = {
@@ -120,9 +130,10 @@ export async function POST(request: Request): Promise<Response> {
    * The same value drives the warning taxonomy, so a reply can never come out
    * half English template and half Hindi condition word.
    */
-  const chrome = replyLanguage(question, lang);
+  const assistant = readPreference(body.assistantLang);
+  const chrome = replyLanguage(question, lang, assistant);
   /** Which language and script the model is told to write in, and is held to. */
-  const answer = answerStyle(question, lang);
+  const answer = answerStyle(question, lang, assistant);
   const history = Array.isArray(body.history) ? body.history : [];
   const standing = body.standing ?? null;
 

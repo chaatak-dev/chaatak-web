@@ -27,14 +27,20 @@ import { useApp } from './AppState';
 import { signInWithGoogle } from '@/lib/auth/browser';
 import { currentPosition, geoSupported } from '@/lib/geo';
 import type { MonitoredLocation } from '@/lib/accounts/types';
+import type { StringKey } from '@/lib/i18n/strings';
 
+/**
+ * What the panel has to say, as a key rather than a sentence — except for the
+ * resolver's own statement, which is already written in both languages
+ * upstream and is not re-worded here.
+ */
 type Notice =
   | null
   | { kind: 'duplicate'; existing: MonitoredLocation }
   | { kind: 'full' }
   | { kind: 'unresolved'; statement: { hi: string; en: string } }
   | { kind: 'error'; message: string }
-  | { kind: 'geo'; hi: string; en: string };
+  | { kind: 'geo'; key: StringKey };
 
 export function LocationsPanel() {
   const app = useApp();
@@ -50,17 +56,8 @@ export function LocationsPanel() {
   if (!app.user) {
     return (
       <section className="places">
-        <h2 className="sidebar__heading">
-          <span lang="hi">निगरानी</span>
-          <span className="sidebar__heading-en">Monitored</span>
-        </h2>
-        <p className="places__invite" lang="hi">
-          तीन जगहें सहेजें और चेतावनी अपने आप पाएँ — इसके लिए साइन इन करें।
-        </p>
-        <p className="places__invite-en">
-          Save up to three places and be warned without asking. Needs an
-          account.
-        </p>
+        <h2 className="sidebar__heading">{app.t('nav.monitored')}</h2>
+        <p className="places__invite">{app.t('places.inviteHeadline')}</p>
       </section>
     );
   }
@@ -110,14 +107,7 @@ export function LocationsPanel() {
       setBusy(false);
       setNotice({
         kind: 'geo',
-        hi:
-          fix.reason === 'denied'
-            ? 'इस साइट के लिए जगह की अनुमति बंद है। जगह का नाम लिखें।'
-            : 'आपकी जगह पता नहीं चल सकी। जगह का नाम लिखें।',
-        en:
-          fix.reason === 'denied'
-            ? 'Location is blocked for this site. Type a place name instead.'
-            : 'Could not get a location fix. Type a place name instead.',
+        key: fix.reason === 'denied' ? 'places.geoDenied' : 'places.geoFailed',
       });
       return;
     }
@@ -141,10 +131,9 @@ export function LocationsPanel() {
   return (
     <section className="places">
       <h2 className="sidebar__heading">
-        <span lang="hi">निगरानी</span>
-        <span className="sidebar__heading-en">Monitored</span>
+        {app.t('nav.monitored')}
         <span className="places__count">
-          {used} of {limit}
+          {app.t('places.count', { used, limit })}
         </span>
       </h2>
 
@@ -177,12 +166,7 @@ export function LocationsPanel() {
                   app.alerts.enabled ? ' places__status--on' : ''
                 }`}
               >
-                <span lang="hi">
-                  {app.alerts.enabled ? 'चेतावनी चालू' : 'सहेजा · चेतावनी बंद'}
-                </span>
-                <span className="places__status-en">
-                  {app.alerts.enabled ? 'Alerts on' : 'Saved · alerts off'}
-                </span>
+                {app.t(app.alerts.enabled ? 'places.alertsOn' : 'places.alertsOff')}
               </p>
             </div>
 
@@ -190,7 +174,7 @@ export function LocationsPanel() {
               type="button"
               className="places__remove"
               onClick={() => void app.removeLocation(location.id)}
-              aria-label={`Stop monitoring ${location.placeName}`}
+              aria-label={app.t('places.remove', { place: location.placeName })}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path
@@ -212,8 +196,8 @@ export function LocationsPanel() {
             className="places__input"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="जगह जोड़ें · Add a place"
-            aria-label="Add a place to monitor"
+            placeholder={app.t('places.addPlaceholder')}
+            aria-label={app.t('places.addLabel')}
             autoComplete="off"
             disabled={busy}
           />
@@ -222,19 +206,11 @@ export function LocationsPanel() {
             className="places__submit"
             disabled={busy || !query.trim()}
           >
-            <span lang="hi">जोड़ें</span>
-            <span className="places__submit-en">Add</span>
+            {app.t('places.add')}
           </button>
         </form>
       ) : (
-        <p className="places__full">
-          <span lang="hi">
-            तीन जगहों तक ही रख सकते हैं। नई जोड़ने के लिए एक हटाएँ।
-          </span>
-          <span className="places__full-en">
-            Three places is the limit. Remove one to add another.
-          </span>
-        </p>
+        <p className="places__full">{app.t('places.full')}</p>
       )}
 
       {remaining > 0 && geoSupported() && (
@@ -255,47 +231,22 @@ export function LocationsPanel() {
               strokeWidth="1.6"
             />
           </svg>
-          <span lang="hi">मैं जहाँ हूँ वह जोड़ें</span>
-          <span className="places__here-en">Add where I am</span>
+          {app.t('places.addHere')}
         </button>
       )}
 
       {notice && (
         <p className="places__notice" role="status">
-          {notice.kind === 'duplicate' && (
-            <>
-              <span lang="hi">
-                {notice.existing.district} पहले से {notice.existing.placeName} में
-                शामिल है।
-              </span>
-              <span className="places__notice-en">
-                {notice.existing.district} is already covered by{' '}
-                {notice.existing.placeName}.
-              </span>
-            </>
-          )}
-          {notice.kind === 'full' && (
-            <>
-              <span lang="hi">
-                तीन जगहों तक ही रख सकते हैं। नई जोड़ने के लिए एक हटाएँ।
-              </span>
-              <span className="places__notice-en">
-                Three places is the limit. Remove one to add another.
-              </span>
-            </>
-          )}
-          {notice.kind === 'unresolved' && (
-            <>
-              <span lang="hi">{notice.statement.hi}</span>
-              <span className="places__notice-en">{notice.statement.en}</span>
-            </>
-          )}
-          {notice.kind === 'geo' && (
-            <>
-              <span lang="hi">{notice.hi}</span>
-              <span className="places__notice-en">{notice.en}</span>
-            </>
-          )}
+          {notice.kind === 'duplicate' &&
+            app.t('places.duplicate', {
+              district: notice.existing.district,
+              place: notice.existing.placeName,
+            })}
+          {notice.kind === 'full' && app.t('places.full')}
+          {/* The resolver wrote this in both languages; it is shown, not
+              re-worded, because it is the same statement the chat gives. */}
+          {notice.kind === 'unresolved' && notice.statement[app.languages.ui]}
+          {notice.kind === 'geo' && app.t(notice.key)}
           {notice.kind === 'error' && notice.message}
         </p>
       )}
@@ -315,7 +266,7 @@ export function LocationsPanel() {
 function AlertsControl() {
   const app = useApp();
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<{ hi: string; en: string } | null>(null);
+  const [problem, setProblem] = useState<StringKey | null>(null);
 
   const blocked = app.pushPermission === 'denied';
   const unsupported = app.pushPermission === 'unsupported' || !app.pushAvailable;
@@ -330,33 +281,21 @@ function AlertsControl() {
 
     setProblem(
       result.reason === 'denied'
-        ? {
-            hi: 'इस साइट के लिए सूचनाएँ बंद हैं। आपकी जगहें फिर भी सहेजी हैं।',
-            en: 'Notifications are blocked for this site. Your places are still saved.',
-          }
+        ? 'alerts.deniedNow'
         : result.reason === 'unsupported'
-          ? {
-              hi: 'यह ब्राउज़र सूचनाएँ नहीं भेज सकता।',
-              en: 'This browser cannot receive push notifications.',
-            }
+          ? 'alerts.unsupported'
           : result.reason === 'unavailable'
-            ? {
-                hi: 'इस साइट पर सूचनाएँ अभी उपलब्ध नहीं हैं।',
-                en: 'Push is not configured on this deployment.',
-              }
-            : {
-                hi: 'चेतावनी चालू नहीं हो सकी। फिर कोशिश करें।',
-                en: 'Could not switch alerts on. Try again.',
-              },
+            ? 'alerts.unavailable'
+            : 'alerts.failed',
     );
   }
 
   return (
     <div className="alertctl">
       <p className="alertctl__state">
-        <span lang="hi">चेतावनी सूचना</span>
+        <span className="alertctl__state-name">{app.t('alerts.heading')}</span>
         <span className="alertctl__state-en">
-          {app.alerts.enabled ? 'Alerts on for this account' : 'Alerts off'}
+          {app.t(app.alerts.enabled ? 'alerts.on' : 'alerts.off')}
         </span>
       </p>
 
@@ -366,31 +305,12 @@ function AlertsControl() {
           className="alertctl__button"
           onClick={() => void app.disableAlerts()}
         >
-          <span lang="hi">इस डिवाइस पर बंद करें</span>
-          <span className="alertctl__button-en">Turn off on this device</span>
+          {app.t('alerts.disable')}
         </button>
       ) : unsupported ? (
-        <p className="alertctl__note">
-          <span lang="hi">
-            यहाँ सूचनाएँ उपलब्ध नहीं हैं। सहेजी जगहें फिर भी काम करती हैं —
-            चेतावनी देखने के लिए चातक खोलें।
-          </span>
-          <span className="alertctl__note-en">
-            Push notifications are not available here. Saved places still work —
-            open Chaatak to see their warnings.
-          </span>
-        </p>
+        <p className="alertctl__note">{app.t('alerts.unsupported')}</p>
       ) : blocked ? (
-        <p className="alertctl__note">
-          <span lang="hi">
-            ब्राउज़र की सेटिंग में इस साइट की सूचनाएँ बंद हैं। सहेजी जगहें फिर भी
-            काम करती हैं — चेतावनी देखने के लिए चातक खोलें।
-          </span>
-          <span className="alertctl__note-en">
-            Notifications are blocked for this site in your browser settings.
-            Saved places still work; open Chaatak to see their warnings.
-          </span>
-        </p>
+        <p className="alertctl__note">{app.t('alerts.blocked')}</p>
       ) : (
         <button
           type="button"
@@ -398,19 +318,13 @@ function AlertsControl() {
           onClick={() => void enable()}
           disabled={busy}
         >
-          <span lang="hi">
-            {busy ? 'पूछ रहे हैं…' : 'इन जगहों की चेतावनी भेजें'}
-          </span>
-          <span className="alertctl__button-en">
-            {busy ? 'Asking…' : 'Warn me about these places'}
-          </span>
+          {app.t(busy ? 'alerts.enabling' : 'alerts.enable')}
         </button>
       )}
 
       {problem && (
         <p className="alertctl__note" role="status">
-          <span lang="hi">{problem.hi}</span>
-          <span className="alertctl__note-en">{problem.en}</span>
+          {app.t(problem)}
         </p>
       )}
     </div>
@@ -419,6 +333,7 @@ function AlertsControl() {
 
 /** The sign-in control, used wherever an account feature is reached for. */
 export function SignInButton({ label }: { label?: string }) {
+  const app = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -459,7 +374,7 @@ export function SignInButton({ label }: { label?: string }) {
             d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"
           />
         </svg>
-        {label ?? 'Sign in with Google'}
+        {label ?? app.t('account.signIn')}
       </button>
       {error && (
         <p className="places__notice" role="status">

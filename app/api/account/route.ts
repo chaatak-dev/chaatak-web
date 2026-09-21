@@ -12,13 +12,18 @@
 
 import { authConfigured } from '@/lib/auth/config';
 import { currentUser } from '@/lib/auth/server';
-import { isLanguageCode } from '@/lib/i18n/languages';
+import {
+  alertLanguage,
+  DEFAULT_PREFERENCES,
+  readPreferences,
+  resolveLanguages,
+} from '@/lib/i18n/preferences';
 import {
   alertStatus,
   deleteAccount,
   readProfile,
   syncSubscriber,
-  upsertProfile,
+  writeLanguagePreferences,
 } from '@/lib/accounts/store';
 import { guardRate, json, readJson, withUser } from '@/lib/accounts/route';
 import { isMissingSchema } from '@/lib/db/pool';
@@ -51,7 +56,7 @@ export async function GET(): Promise<Response> {
         email: profile?.email ?? user.email,
         name: profile?.name ?? user.name,
         avatarUrl: profile?.avatarUrl ?? user.avatarUrl,
-        lang: profile?.lang ?? 'hi',
+        languages: profile?.languages ?? DEFAULT_PREFERENCES,
       },
       alerts,
     });
@@ -59,7 +64,7 @@ export async function GET(): Promise<Response> {
     if (isMissingSchema(error)) {
       return json({
         configured,
-        user: { ...user, lang: 'hi' },
+        user: { ...user, languages: DEFAULT_PREFERENCES },
         alerts: { enabled: false, channels: { webpush: 0, telegram: 0 } },
         warning: 'Account tables are missing. Run `node scripts/migrate.mjs`.',
       });
@@ -69,23 +74,38 @@ export async function GET(): Promise<Response> {
 }
 
 /**
- * The reply language, kept on the account.
+ * The three language preferences, kept on the account.
  *
- * It lives in the browser too — that is what the toggle reads — but an alert
- * dispatched while the phone is asleep has no browser to ask, so the language
- * someone actually chose has to exist server-side for the daemon to use it.
+ * They live in the browser too, which is what a guest uses — but an alert
+ * dispatched while the phone is asleep has no browser to ask, so the choice
+ * has to exist server-side for the daemon to render in.
+ *
+ * The ALERT language is derived here rather than sent: the client could
+ * assert anything, and the daemon can only render the two languages the
+ * warning taxonomy is human-translated into. Resolving it server-side from
+ * the same rules the interface uses means the two cannot drift, and a
+ * template that does not exist can never be asked for.
  */
 export async function PATCH(request: Request): Promise<Response> {
   return withUser(async (user) => {
     const body = await readJson(request);
-    const lang = isLanguageCode(body.lang) ? body.lang : 'hi';
 
-    await upsertProfile(user, lang);
+    const preferences = readPreferences(body.languages ?? body);
+
+    /*
+     * No `navigator.languages` on a server, so `auto` resolves to the
+     * fallback here. That is the right answer for a dispatch: an alert sent
+     * at 3am cannot consult a browser, and English is the language IMD
+     * publishes warning codes in.
+     */
+    const resolved = resolveLanguages(preferences, undefined);
+
+    await writeLanguagePreferences(user.id, preferences, alertLanguage(resolved));
     // The subscriber row carries its own copy, because the daemon reads that
     // row and nothing else.
     await syncSubscriber(user.id);
 
-    return { ok: true, lang };
+    return { ok: true, languages: preferences, alertLang: alertLanguage(resolved) };
   });
 }
 

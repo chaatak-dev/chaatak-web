@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 314 tests, no network or database needed
+npm test        # 370 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Every third-party call goes
@@ -140,6 +140,35 @@ granting location. If notifications are blocked, saved places still work.
 A coordinate is resolved to a canonical place through the existing gazetteer —
 not a second geocoder — and then discarded. What gets stored for a place saved
 from "use my location" is the town's coordinate, never the device's fix.
+
+---
+
+## Language
+
+Three preferences, and they do not move each other:
+
+| | `auto` means | Stored |
+| --- | --- | --- |
+| **Interface** | the device's ordered `navigator.languages` | profile · localStorage |
+| **Assistant** | mirror whatever language and script the question was in | profile · localStorage |
+| **Voice** | follow the assistant if set, otherwise the interface | profile · localStorage |
+
+`UI = English, Assistant = Hindi, Voice = Hindi` is a valid configuration, and
+so is every other combination. An explicit choice is never overridden by a
+device change; picking **Auto** again hands control back to the device.
+
+**Automatic detection follows `support.interface` in `lib/i18n/languages.ts`,
+not a separate list.** A language becomes auto-detectable in the same commit
+that gives it interface strings — Hindi and English today. The other five can
+still be chosen: speech works in all seven, so the answer and the voice come
+in the chosen language while the chrome borrows Hindi or English, and the
+settings panel says so.
+
+Every interface string is in `lib/i18n/strings.ts`, written by hand in both
+languages. Nothing there is machine-translated and nothing there may be — the
+warning taxonomy lives under the same rule next door, and a catalogue that
+accepts machine output for "just the chrome" is one edit from accepting it for
+a severity.
 
 ---
 

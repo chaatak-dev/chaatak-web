@@ -198,3 +198,47 @@ test('a Marathi speaker typing Devanagari is answered in Marathi, not Hindi', ()
   assert.equal(answerStyle('पुण्यात उद्या पाऊस पडेल का?', 'mr').code, 'mr');
   assert.equal(answerStyle('बाराबंकी में कल बारिश होगी?', 'hi').code, 'hi');
 });
+
+/* ------------------------------------------------------------------ */
+/* An explicitly chosen assistant language                             */
+/*                                                                     */
+/* `auto` is the default and mirrors whatever the person wrote, which  */
+/* is what every case above asserts. These cover the other branch: a   */
+/* language they went to a setting and named.                          */
+/* ------------------------------------------------------------------ */
+
+test('an explicit assistant language is honoured over the script typed in', () => {
+  // Asked in English, answered in Hindi, because that is what was chosen.
+  const style = answerStyle('will it rain in Delhi', 'en', 'hi');
+  assert.equal(style.code, 'hi');
+  assert.equal(style.script, 'Deva');
+
+  // And the other way round.
+  const back = answerStyle('दिल्ली में बारिश होगी?', 'hi', 'en');
+  assert.equal(back.code, 'en');
+  assert.equal(back.script, 'Latn');
+});
+
+test('the template language follows an explicit assistant language too', () => {
+  // Otherwise a gate rejection would ship a Hindi template under an English
+  // answer, which is the seam this pairing exists to prevent.
+  assert.equal(replyLanguage('will it rain in Delhi', 'en', 'hi'), 'hi');
+  assert.equal(replyLanguage('दिल्ली में बारिश होगी?', 'hi', 'en'), 'en');
+});
+
+test('a chosen language with no templates still lands on one that exists', () => {
+  // Tamil speech exists; Tamil templates do not. The answer is written in
+  // Tamil by the model, and the fallback template is English rather than
+  // machine-translated.
+  assert.equal(answerStyle('will it rain', 'en', 'ta').code, 'ta');
+  assert.equal(replyLanguage('will it rain', 'en', 'ta'), 'en');
+});
+
+test('auto is the default and changes nothing', () => {
+  // The same two calls with and without the argument must agree, which is
+  // what makes this addition safe for every existing caller.
+  for (const q of ['will it rain', 'दिल्ली में बारिश होगी?', 'kal barish hogi']) {
+    assert.deepEqual(answerStyle(q, 'hi'), answerStyle(q, 'hi', 'auto'), q);
+    assert.equal(replyLanguage(q, 'hi'), replyLanguage(q, 'hi', 'auto'), q);
+  }
+});

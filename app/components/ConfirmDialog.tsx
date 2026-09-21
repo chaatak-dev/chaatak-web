@@ -10,19 +10,23 @@
  *
  * The destructive action is never the default focus. Opening a dialog and
  * pressing Enter out of habit should cancel, not delete.
+ *
+ * Callers pass STRING KEYS, not sentences. A dialog is the last thing someone
+ * reads before losing data, so it is the last place a half-translated screen
+ * is acceptable — keys mean it cannot be assembled from two languages by
+ * accident, and it renders in whatever the interface language is at the
+ * moment it opens.
  */
 
 import { useEffect, useRef } from 'react';
+import { useApp } from './AppState';
+import type { StringKey } from '@/lib/i18n/strings';
 
 export type ConfirmDialogProps = {
   open: boolean;
-  /** Hindi first: it is the primary language in the type hierarchy. */
-  headline: string;
-  headlineEn: string;
-  body: string;
-  bodyEn: string;
-  confirmLabel: string;
-  confirmLabelEn: string;
+  headline: StringKey;
+  body: StringKey;
+  confirmLabel: StringKey;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -30,14 +34,12 @@ export type ConfirmDialogProps = {
 export function ConfirmDialog({
   open,
   headline,
-  headlineEn,
   body,
-  bodyEn,
   confirmLabel,
-  confirmLabelEn,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useApp();
   const ref = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -65,15 +67,8 @@ export function ConfirmDialog({
       }}
       onClose={onCancel}
     >
-      <h2 className="confirm__headline" lang="hi">
-        {headline}
-      </h2>
-      <p className="confirm__headline-en">{headlineEn}</p>
-
-      <p className="confirm__body" lang="hi">
-        {body}
-      </p>
-      <p className="confirm__body-en">{bodyEn}</p>
+      <h2 className="confirm__headline">{t(headline)}</h2>
+      <p className="confirm__body">{t(body)}</p>
 
       <div className="confirm__actions">
         <button
@@ -82,12 +77,10 @@ export function ConfirmDialog({
           className="confirm__cancel"
           onClick={onCancel}
         >
-          <span lang="hi">रहने दें</span>
-          <span className="confirm__en">Cancel</span>
+          {t('confirm.cancel')}
         </button>
         <button type="button" className="confirm__confirm" onClick={onConfirm}>
-          <span lang="hi">{confirmLabel}</span>
-          <span className="confirm__en">{confirmLabelEn}</span>
+          {t(confirmLabel)}
         </button>
       </div>
     </dialog>

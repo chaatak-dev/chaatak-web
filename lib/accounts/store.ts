@@ -20,6 +20,8 @@ import type { Grounding } from '../chat/types';
 import type { SpeechLang } from '../speech/types';
 import type { DistrictId, Location } from '../weather/types';
 import type { AuthUser } from '../auth/server';
+import { readPreferences, type LanguagePreferences } from '../i18n/preferences';
+import type { InterfaceLang } from '../i18n/languages';
 import type {
   AddLocationResult,
   AlertStatus,
@@ -42,26 +44,61 @@ import { MAX_MONITORED } from './types';
  * name or a new avatar follows the account instead of freezing at whatever it
  * was the day it was created.
  */
-export async function upsertProfile(
-  user: AuthUser,
-  lang?: string,
-): Promise<void> {
+export async function upsertProfile(user: AuthUser): Promise<void> {
+  /*
+   * The avatar used to be written as `coalesce($4, 'hi')`, sharing a line
+   * with the language default beside it. An account with no Google picture
+   * therefore stored the string "hi" as its avatar URL, and the sidebar
+   * rendered <img src="hi"> — a broken-image icon where a face should be.
+   * A missing avatar is null.
+   *
+   * Language is not touched here. Signing in is not a language choice, and
+   * writing a default on every sign-in would overwrite the choice made on
+   * another device a moment earlier.
+   */
   await db().query(
-    `insert into profiles (id, email, name, avatar_url, lang)
-     values ($1, $2, $3, coalesce($4, 'hi'), coalesce($5, 'hi'))
+    `insert into profiles (id, email, name, avatar_url)
+     values ($1, $2, $3, $4)
      on conflict (id) do update
        set email      = excluded.email,
            name       = excluded.name,
            avatar_url = excluded.avatar_url,
-           lang       = coalesce($5, profiles.lang),
            updated_at = now()`,
-    [user.id, user.email, user.name, user.avatarUrl, lang ?? null],
+    [user.id, user.email, user.name, user.avatarUrl],
+  );
+}
+
+/**
+ * The three language preferences, and the alert language derived from them.
+ *
+ * `lang` is not a fourth preference. It is the resolved interface language,
+ * stored because an alert is dispatched while the phone is asleep — there is
+ * no browser to detect from and no question to mirror at that moment. It is
+ * constrained in the schema to the two languages the warning taxonomy is
+ * human-translated into, so the daemon can never be handed a template that
+ * does not exist.
+ */
+export async function writeLanguagePreferences(
+  userId: string,
+  preferences: LanguagePreferences,
+  alertLang: InterfaceLang,
+): Promise<void> {
+  await db().query(
+    `update profiles
+        set ui_lang        = $2,
+            assistant_lang = $3,
+            voice_lang     = $4,
+            lang           = $5,
+            updated_at     = now()
+      where id = $1`,
+    [userId, preferences.ui, preferences.assistant, preferences.voice, alertLang],
   );
 }
 
 export async function readProfile(userId: string): Promise<Profile | null> {
   const { rows } = await db().query(
-    `select id, email, name, avatar_url, lang from profiles where id = $1`,
+    `select id, email, name, avatar_url, lang, ui_lang, assistant_lang, voice_lang
+       from profiles where id = $1`,
     [userId],
   );
   if (rows.length === 0) return null;
@@ -70,8 +107,15 @@ export async function readProfile(userId: string): Promise<Profile | null> {
     id: row.id,
     email: row.email,
     name: row.name,
-    avatarUrl: row.avatar_url,
+    // Rows written before the avatar bug was fixed hold the string "hi" here,
+    // which is not a URL and must not reach an <img>.
+    avatarUrl: row.avatar_url && row.avatar_url.startsWith('http') ? row.avatar_url : null,
     lang: row.lang,
+    languages: readPreferences({
+      ui: row.ui_lang,
+      assistant: row.assistant_lang,
+      voice: row.voice_lang,
+    }),
   };
 }
 

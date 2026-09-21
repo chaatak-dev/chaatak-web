@@ -270,6 +270,20 @@ stands between two accounts on Supabase's public PostgREST endpoint, which the
 browser can reach with the anon key it now holds. `npm run verify:rls` proves
 it by becoming the `authenticated` role and trying.
 
+**Three language preferences, never one.** Interface, assistant and voice are
+independent: choosing a voice cannot change the script of written text, and
+someone can read English chrome while asking and being answered in Hindi. Each
+defaults to `auto`, and `auto` means something different and specific for
+each — the device's ordered `navigator.languages` for the interface, mirror-
+the-user for the assistant, follow-the-other-choices for voice. An explicit
+choice is never overridden by a device change.
+
+Automatic interface detection follows `support.interface`, so a language
+becomes detectable in the same commit that makes it readable — Hindi and
+English today, and nothing else until its strings exist. The five speech-only
+languages can still be chosen; the interface borrows Hindi or English for them
+and says so rather than implying a completeness that is not there.
+
 **A saved place and a notification are separate decisions.** Device location
 is requested at the one moment a question cannot be answered without it, and
 never again after a refusal; notification permission is requested only when
@@ -313,9 +327,15 @@ colour-blind users and for bright sunlight.
 something. One teal accent marks what is interactive. Nothing else is
 coloured.
 
-**Hindi is primary in the type hierarchy**, English is the subtitle.
-Devanagari needs more line-height than Latin — tag with `lang="hi"` and
-`brand.css` handles it.
+**The interface renders in ONE language, chosen or detected.** It used to be
+bilingual everywhere — a Hindi line with an English line under it, on every
+label — which was the right answer while there was no language setting and
+the wrong one once there was: a farmer who chose Hindi should not read English
+under every button, and an English reader should not be shown Devanagari.
+Every string lives in `lib/i18n/strings.ts`, human-written in both, never
+machine-translated. Devanagari needs more line-height than Latin; the document's
+own `lang` carries it, so `:lang(hi)` in `brand.css` applies by inheritance
+rather than by tagging each element.
 
 **The microphone is the largest element on screen.** Voice is the input;
 text is the fallback.
@@ -455,5 +475,7 @@ Kubernetes. None of them change whether a farmer gets a warning.
 - [ ] No account route trusts a user id from the request
 - [ ] RLS denies every table in `public` to `anon` by default
 - [ ] A permission is asked for only when the thing it enables was asked for
+- [ ] Interface strings come from the catalogue, never machine-translated
+- [ ] Choosing one language preference never moves another
 - [ ] Hindi text renders correctly at every breakpoint
 - [ ] Works at 360px, one-handed, in sunlight

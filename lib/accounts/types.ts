@@ -15,6 +15,7 @@
 import type { Grounding } from '../chat/types';
 import type { SpeechLang } from '../speech/types';
 import type { DistrictId } from '../weather/types';
+import type { LanguagePreferences } from '../i18n/preferences';
 
 export type ConversationId = string & { readonly __brand: 'ConversationId' };
 
@@ -97,5 +98,12 @@ export type Profile = {
   email: string | null;
   name: string | null;
   avatarUrl: string | null;
+  /**
+   * The language an ALERT is written in — the resolved interface language,
+   * kept server-side because a dispatch happens with no browser to ask. Not a
+   * preference the person sets directly; see `languages` for those.
+   */
   lang: string;
+  /** What the person actually chose: interface, assistant and voice. */
+  languages: LanguagePreferences;
 };

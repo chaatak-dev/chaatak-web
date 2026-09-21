@@ -55,14 +55,7 @@ export function AccountMenu() {
     return (
       <div className="account account--out">
         <SignInButton />
-        <p className="account__why">
-          <span lang="hi">
-            आपकी बातचीत और तीन निगरानी वाली जगहें, हर डिवाइस पर।
-          </span>
-          <span className="account__why-en">
-            Keeps your chats and up to three monitored places, on every device.
-          </span>
-        </p>
+        <p className="account__why">{app.t('account.why')}</p>
         {app.signInError && (
           <p className="account__error" role="status">
             {app.signInError}
@@ -73,7 +66,7 @@ export function AccountMenu() {
   }
 
   const { user } = app;
-  const display = user.name ?? user.email ?? 'Signed in';
+  const display = user.name ?? user.email ?? app.t('account.signedIn');
   const initial = (user.name ?? user.email ?? '?').trim().charAt(0).toUpperCase();
 
   return (
@@ -89,8 +82,7 @@ export function AccountMenu() {
               setPending('delete-chats');
             }}
           >
-            <span lang="hi">सारी बातचीत मिटाएँ</span>
-            <span className="account__action-en">Delete all chats</span>
+            {app.t('account.deleteAll')}
           </button>
 
           <button
@@ -102,8 +94,7 @@ export function AccountMenu() {
               setPending('signout');
             }}
           >
-            <span lang="hi">साइन आउट</span>
-            <span className="account__action-en">Sign out</span>
+            {app.t('account.signOut')}
           </button>
 
           <button
@@ -115,8 +106,7 @@ export function AccountMenu() {
               setPending('delete-account');
             }}
           >
-            <span lang="hi">खाता मिटाएँ</span>
-            <span className="account__action-en">Delete account</span>
+            {app.t('account.delete')}
           </button>
         </div>
       )}
@@ -126,6 +116,7 @@ export function AccountMenu() {
         className="account__button"
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label={app.t('account.menu')}
         onClick={() => setOpen((was) => !was)}
       >
         {user.avatarUrl ? (
@@ -169,12 +160,9 @@ export function AccountMenu() {
 
       <ConfirmDialog
         open={pending === 'signout'}
-        headline="साइन आउट करें?"
-        headlineEn="Sign out?"
-        body="आपकी बातचीत और जगहें सुरक्षित रहेंगी। दोबारा साइन इन करने पर फिर मिल जाएँगी।"
-        bodyEn="Your chats and monitored places stay safe. They are here again when you sign back in."
-        confirmLabel="साइन आउट"
-        confirmLabelEn="Sign out"
+        headline="confirm.signOut.headline"
+        body="confirm.signOut.body"
+        confirmLabel="confirm.signOut.confirm"
         onCancel={() => setPending(null)}
         onConfirm={() => {
           setPending(null);
@@ -184,12 +172,9 @@ export function AccountMenu() {
 
       <ConfirmDialog
         open={pending === 'delete-chats'}
-        headline="सारी बातचीत मिटाएँ?"
-        headlineEn="Delete all chats?"
-        body="हर बातचीत और उसके सारे संदेश हमेशा के लिए मिट जाएँगे। निगरानी वाली जगहें और चेतावनियाँ वैसी ही रहेंगी।"
-        bodyEn="Every conversation and all its messages go, permanently. Your monitored places and alerts are not affected."
-        confirmLabel="सब मिटाएँ"
-        confirmLabelEn="Delete all"
+        headline="confirm.deleteAll.headline"
+        body="confirm.deleteAll.body"
+        confirmLabel="confirm.deleteAll.confirm"
         onCancel={() => setPending(null)}
         onConfirm={() => {
           setPending(null);
@@ -199,18 +184,15 @@ export function AccountMenu() {
 
       <ConfirmDialog
         open={pending === 'delete-account'}
-        headline="खाता मिटाएँ?"
-        headlineEn="Delete account?"
-        body="बातचीत, संदेश, निगरानी वाली जगहें और चेतावनियाँ — सब हमेशा के लिए मिट जाएगा। यह वापस नहीं आ सकता।"
-        bodyEn="Conversations, messages, monitored places and alerts are all deleted permanently. This cannot be undone."
-        confirmLabel="खाता मिटाएँ"
-        confirmLabelEn="Delete account"
+        headline="confirm.deleteAccount.headline"
+        body="confirm.deleteAccount.body"
+        confirmLabel="confirm.deleteAccount.confirm"
         onCancel={() => setPending(null)}
         onConfirm={() => {
           setPending(null);
           setError(null);
           void app.deleteAccount().then((result) => {
-            if (!result.ok) setError(result.error ?? 'Could not delete the account.');
+            if (!result.ok) setError(result.error ?? app.t('account.deleteFailed'));
           });
         }}
       />

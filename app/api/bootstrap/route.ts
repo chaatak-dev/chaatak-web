@@ -26,6 +26,7 @@ import {
   readProfile,
 } from '@/lib/accounts/store';
 import { MAX_MONITORED } from '@/lib/accounts/types';
+import { DEFAULT_PREFERENCES } from '@/lib/i18n/preferences';
 import { json } from '@/lib/accounts/route';
 
 export const dynamic = 'force-dynamic';
@@ -62,7 +63,7 @@ export async function GET(): Promise<Response> {
         email: profile?.email ?? user.email,
         name: profile?.name ?? user.name,
         avatarUrl: profile?.avatarUrl ?? user.avatarUrl,
-        lang: profile?.lang ?? 'hi',
+        languages: profile?.languages ?? DEFAULT_PREFERENCES,
       },
       alerts,
       conversations,
@@ -83,7 +84,7 @@ export async function GET(): Promise<Response> {
     if (isMissingSchema(error)) {
       return json({
         configured,
-        user: { ...user, lang: 'hi' },
+        user: { ...user, languages: DEFAULT_PREFERENCES },
         alerts: NO_ALERTS,
         conversations: [],
         locations: { locations: [], limit: MAX_MONITORED, used: 0, remaining: MAX_MONITORED, alerts: NO_ALERTS },

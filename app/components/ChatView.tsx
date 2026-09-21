@@ -16,17 +16,19 @@
  * which is what keeps one send path instead of two.
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { ChatReply } from '../api/chat/route';
 import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
 import { classifyFailure, failureText } from '@/lib/chat/failure';
-import {
-  isLanguageCode,
-  language,
-  taxonomyIsBorrowed,
-  type LanguageCode,
-} from '@/lib/i18n/languages';
+import { greeting, firstName, suggestions } from '@/lib/i18n/greetings';
 import { pickSource } from '@/lib/speech/source';
 import { formatStamp, placeLine } from '@/lib/format';
 import {
@@ -41,31 +43,12 @@ import { canAskForLocation, currentPosition, geoSupported, type Coords } from '@
 import { ChatTurn } from './ChatTurn';
 import { StaleBand } from './StaleBand';
 import { ThemeToggle } from './ThemeToggle';
-import { LangToggle } from './LangToggle';
+import { LanguagePanel } from './LanguagePanel';
 import { LogoMark } from './LogoMark';
 import { Mic } from './Mic';
 import { useApp } from './AppState';
 
-const LANG_KEY = 'chaatak:voice-lang';
-const LANG_EVENT = 'chaatak:voice-lang-changed';
-
 const noopSubscribe = () => () => {};
-
-function subscribeLang(onChange: () => void): () => void {
-  window.addEventListener(LANG_EVENT, onChange);
-  return () => window.removeEventListener(LANG_EVENT, onChange);
-}
-
-function storedLang(): SpeechLang {
-  try {
-    const stored = localStorage.getItem(LANG_KEY);
-    // Any of the seven. An unrecognised value falls back rather than throwing:
-    // a stale preference should not cost someone the app.
-    return isLanguageCode(stored) ? stored : 'hi';
-  } catch {
-    return 'hi';
-  }
-}
 
 let seq = 0;
 const nextId = () => `m${Date.now().toString(36)}-${(seq += 1)}`;
@@ -90,7 +73,15 @@ type Ask = (question: string, spoken: boolean, options?: AskOptions) => Promise<
 
 export function ChatView() {
   const app = useApp();
-  const { messages, setMessages } = app;
+  const { messages, setMessages, t } = app;
+
+  /*
+   * Voice and interface are different settings and this component needs both.
+   * `lang` is what the recogniser listens in and the voice reads back; `t`
+   * writes the chrome. Conflating them is what used to make choosing a Tamil
+   * voice render the page in English — or, worse, switch a typed script.
+   */
+  const lang: SpeechLang = app.languages.voice;
 
   const [standing, setStanding] = useState<StandingQuery | null>(null);
   const [draft, setDraft] = useState('');
@@ -126,7 +117,6 @@ export function ChatView() {
    */
   const inFlight = useRef(false);
 
-  const lang = useSyncExternalStore<SpeechLang>(subscribeLang, storedLang, () => 'hi');
   const canRecognise = useSyncExternalStore(
     noopSubscribe,
     () => pickSource('recognise') !== null,
@@ -172,21 +162,6 @@ export function ChatView() {
       // offline. Not worth telling the user about.
     });
   }, []);
-
-  const chooseLang = useCallback(
-    (next: LanguageCode) => {
-      try {
-        localStorage.setItem(LANG_KEY, next);
-      } catch {
-        /* preference does not persist */
-      }
-      window.dispatchEvent(new Event(LANG_EVENT));
-      // An alert dispatched while the phone is asleep has no browser to ask,
-      // so the account keeps its own copy of this choice.
-      app.syncLang(next);
-    },
-    [app],
-  );
 
   const speak = useCallback((text: string, at: SpeechLang) => {
     const speaker = pickSource('speak');
@@ -255,6 +230,9 @@ export function ChatView() {
             // write the same turn twice.
             clientId: asked.id,
             coords: coords ?? null,
+            // `auto` means mirror what was just written, which is what the
+            // route does when it sees it. An explicit choice travels.
+            assistantLang: app.preferences.assistant,
           }),
         });
 
@@ -455,6 +433,23 @@ export function ChatView() {
   const shownMicState: MicState = canRecognise ? micState : 'unsupported';
   const where = standing?.resolvedPlace ? placeLine(standing.resolvedPlace) : null;
 
+  /*
+   * The greeting and the chips are chosen from the CHAT, not from a random
+   * number. `viewKey` changes when the person moves to another conversation
+   * and not otherwise, so the same chat always opens with the same words and
+   * a re-render never reshuffles them — which a `Math.random()` at render
+   * time would do on every keystroke.
+   */
+  const hello = useMemo(
+    () => greeting(app.viewKey, firstName(app.user?.name), app.languages.ui),
+    [app.viewKey, app.user?.name, app.languages.ui],
+  );
+
+  const chips = useMemo(
+    () => suggestions(app.viewKey, app.languages.ui),
+    [app.viewKey, app.languages.ui],
+  );
+
   return (
     <>
       <header className="masthead">
@@ -468,7 +463,7 @@ export function ChatView() {
             type="button"
             className="masthead__menu"
             onClick={() => app.setDrawerOpen(true)}
-            aria-label="Open chats and locations"
+            aria-label={t('nav.open')}
           >
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path
@@ -495,10 +490,12 @@ export function ChatView() {
               <p className="masthead__place">{where}</p>
             ) : (
               <p className="masthead__brand">
-                <span lang="hi" className="masthead__brand-hi">
-                  चातक
-                </span>
-                <span className="masthead__brand-en">Chaatak</span>
+                <span className="masthead__brand-hi">{t('brand.name')}</span>
+                {app.languages.ui !== 'en' && (
+                  <span className="masthead__brand-en" lang="en">
+                    {t('brand.wordmark')}
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -516,7 +513,7 @@ export function ChatView() {
         role="log"
         aria-live="polite"
         aria-relevant="additions"
-        aria-label="Conversation"
+        aria-label={t('chat.log')}
       >
         {app.loadingConversation ? (
           /*
@@ -525,10 +522,7 @@ export function ChatView() {
             conversation that is about to appear.
           */
           slowOpen ? (
-            <p className="chat__thinking">
-              <span lang="hi">बातचीत खुल रही है…</span>
-              <span className="chat__thinking-en">Opening</span>
-            </p>
+            <p className="chat__thinking">{t('chat.opening')}</p>
           ) : null
         ) : messages.length === 0 && offline && !cached ? (
           /*
@@ -537,29 +531,16 @@ export function ChatView() {
            * not a degraded answer.
            */
           <section className="absence absence--nodata" role="status">
-            <p className="absence__label">
-              <span lang="hi" className="absence__label-hi">
-                कोई सहेजी गई जानकारी नहीं
-              </span>
-              <span className="absence__label-en">Nothing saved</span>
-            </p>
-            <p lang="hi" className="absence__statement">
-              आप ऑफ़लाइन हैं और कोई पुरानी जानकारी सहेजी नहीं है। इंटरनेट आने पर
-              फिर पूछें।
-            </p>
-            <p className="absence__statement-en">
-              You are offline and nothing was saved earlier. Ask again when you
-              have a connection.
-            </p>
+            <p className="absence__label">{t('offline.nothingSaved')}</p>
+            <p className="absence__statement">{t('offline.nothingSavedBody')}</p>
           </section>
-        ) : messages.length === 0 && cached ? (
+        ) : messages.length === 0 && offline && cached ? (
           /*
            * Something was saved. It renders on first paint, above the value
            * and at the same weight as a severity band — never as a badge.
            */
           <>
             <StaleBand
-              lang={lang}
               ageMinutes={staleness(cached).ageMinutes}
               expired={staleness(cached).expired}
               offline={offline}
@@ -586,17 +567,27 @@ export function ChatView() {
           </>
         ) : messages.length === 0 ? (
           <section className="chat__empty">
-            <p lang="hi" className="chat__empty-headline">
-              मौसम के बारे में कुछ भी पूछें
-            </p>
-            <p className="chat__empty-subtitle">
-              Ask about the weather — by voice or by typing. Every number comes
-              with its source and the time it was issued.
-            </p>
+            <p className="chat__greeting">{hello}</p>
+            <p className="chat__empty-subtitle">{t('chat.subtitle')}</p>
+
+            {/*
+              Chips, not examples. They were decoration before — three lines
+              of Hindi that looked tappable and were not. Each one is now the
+              question it says, which is the shortest path there is from an
+              empty chat to an answer.
+            */}
             <ul className="chat__examples">
-              <li lang="hi">बाराबंकी में कल बारिश होगी?</li>
-              <li lang="hi">क्या मैं आज क्रिकेट खेल सकता हूँ?</li>
-              <li lang="hi">ऑरेंज अलर्ट का मतलब क्या है?</li>
+              {chips.map((chip) => (
+                <li key={chip}>
+                  <button
+                    type="button"
+                    className="chat__chip"
+                    onClick={() => void ask(chip, false)}
+                  >
+                    {chip}
+                  </button>
+                </li>
+              ))}
             </ul>
           </section>
         ) : (
@@ -622,60 +613,33 @@ export function ChatView() {
                 strokeWidth="1.6"
               />
             </svg>
-            <span lang="hi">मेरी जगह इस्तेमाल करें</span>
-            <span className="uselocation__en">Use my location</span>
+            <span>{t('chat.useMyLocation')}</span>
           </button>
         )}
 
         {locationNeed === 'asking' && (
-          <p className="chat__thinking">
-            <span lang="hi">जगह पता कर रहे हैं…</span>
-            <span className="chat__thinking-en">Finding you</span>
-          </p>
+          <p className="chat__thinking">{t('chat.locating')}</p>
         )}
 
         {thinking && locationNeed !== 'asking' && (
-          <p className="chat__thinking">
-            <span lang="hi">सोच रहे हैं…</span>
-            <span className="chat__thinking-en">Thinking</span>
-          </p>
+          <p className="chat__thinking">{t('chat.thinking')}</p>
         )}
 
         <div ref={endRef} />
       </div>
 
       {/*
-        Rendered ONCE. Duplicating them into the masthead as well put two
-        controls for one setting on screen at every width, and two elements
-        sharing #voice-language, which quietly broke the label association.
+        Rendered ONCE. Duplicating the controls into the masthead as well put
+        two controls for one setting on screen at every width, and two
+        elements sharing an id, which quietly broke the label association.
         A strip above the conversation on narrow screens, a sticky column
         beside it on wide ones — same markup, different placement.
       */}
       <aside className="chat__rail">
-        <p className="chat__rail-heading">Preferences</p>
-        {shownMicState !== 'unsupported' && (
-          <LangToggle value={lang} onChange={chooseLang} />
-        )}
+        <p className="chat__rail-heading">{t('settings.heading')}</p>
+        <LanguagePanel />
+        <p className="chat__rail-heading">{t('settings.theme')}</p>
         <ThemeToggle />
-        {/*
-          Said once, where the choice was made, not buried in a settings
-          page. Bhashini speaks all seven; IMD's severity vocabulary is
-          human-translated into two, and machine-translating a warning level
-          is the one failure the verification gate cannot catch. So the gap
-          is stated rather than papered over.
-        */}
-        {taxonomyIsBorrowed(lang) && (
-          <p className="langnote" role="note">
-            <span lang={lang} className="langnote__native">
-              {language(lang).native}
-            </span>
-            <span className="langnote__text">
-              Chaatak listens and replies in {language(lang).english}. Official
-              warning levels stay in English — translated by hand, never by
-              machine.
-            </span>
-          </p>
-        )}
       </aside>
 
       <div className="composer">
@@ -701,8 +665,8 @@ export function ChatView() {
             className="composer__input"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={lang === 'hi' ? 'कुछ भी पूछें…' : 'Ask anything…'}
-            aria-label="Ask about the weather"
+            placeholder={t('composer.placeholder')}
+            aria-label={t('composer.label')}
             autoComplete="off"
             enterKeyHint="send"
           />
@@ -710,7 +674,7 @@ export function ChatView() {
             className="composer__send"
             type="submit"
             disabled={thinking || !draft.trim()}
-            aria-label="Send"
+            aria-label={t('composer.send')}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -734,7 +698,7 @@ export function ChatView() {
               setSpeaking(false);
             }}
           >
-            <span lang="hi">बोलना बंद करें</span>
+            {t('composer.stopSpeaking')}
           </button>
         )}
       </div>

@@ -2603,3 +2603,279 @@ body:has(.chat) {
 .places__status-en {
   display: inline;
 }
+
+
+/* ------------------------------------------------------------------ */
+/* One language at a time                                              */
+/*                                                                     */
+/* The chrome used to be a Hindi line with an English line beneath it,  */
+/* everywhere, permanently — the right answer while there was no        */
+/* language setting and the wrong one now there is. These rules undo    */
+/* the pairing: the subtitle halves are gone from the markup, and what  */
+/* is left is one line that takes its face and leading from the         */
+/* document's own `lang`.                                               */
+/* ------------------------------------------------------------------ */
+
+.sidebar__heading,
+.recents__empty,
+.places__invite,
+.places__status,
+.places__full,
+.places__notice,
+.alertctl__note,
+.account__why,
+.absence__label,
+.absence__statement,
+.stale__label,
+.stale__statement,
+.mic__label,
+.mic__statement,
+.confirm__headline,
+.confirm__body {
+  display: block;
+}
+
+/* Devanagari needs the extra leading wherever it lands, and it lands by
+   inheritance now rather than by a tag on every element. */
+:lang(hi) .sidebar__heading,
+:lang(hi) .recents__empty,
+:lang(hi) .places__invite,
+:lang(hi) .places__full,
+:lang(hi) .places__notice,
+:lang(hi) .alertctl__note,
+:lang(hi) .account__why,
+:lang(hi) .absence__statement,
+:lang(hi) .stale__statement,
+:lang(hi) .confirm__body {
+  line-height: var(--leading-deva);
+}
+
+.sidebar__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* The heading is a small caps label in Latin and a normal-weight word in
+   Devanagari — caps do not exist in Devanagari and faking them with
+   letter-spacing only makes it harder to read. */
+:lang(hi) .sidebar__heading {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.places__status {
+  display: block;
+}
+
+.alertctl__state-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:lang(hi) .alertctl__state-en {
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11.5px;
+}
+
+.confirm__headline {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.confirm__body {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+.confirm__cancel,
+.confirm__confirm {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mic__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.mic--compact .mic__label {
+  font-size: 14px;
+}
+
+.absence__label,
+.stale__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+:lang(hi) .absence__label,
+:lang(hi) .stale__label {
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* The empty chat                                                      */
+/*                                                                     */
+/* A greeting, a line saying what this is for, and four things it can   */
+/* answer. Chosen per chat and stable for it — see lib/i18n/greetings.  */
+/* ------------------------------------------------------------------ */
+
+.chat__greeting {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+:lang(hi) .chat__greeting {
+  font-size: 21px;
+  line-height: var(--leading-deva);
+  letter-spacing: 0;
+}
+
+.chat__empty-subtitle {
+  max-width: 30rem;
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+:lang(hi) .chat__empty-subtitle {
+  line-height: var(--leading-deva);
+}
+
+/* Chips, not a list of examples. They were three lines of text that looked
+   tappable and were not; each is now the question it says. */
+.chat__examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.chat__examples li {
+  padding: 0;
+  margin: 0;
+  background: none;
+}
+
+.chat__chip {
+  min-height: 42px;
+  padding: 0 14px;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chat__chip:hover {
+  border-color: var(--border-control);
+}
+
+:lang(hi) .chat__chip {
+  font-size: 15.5px;
+}
+
+/* ------------------------------------------------------------------ */
+/* The language settings                                               */
+/* ------------------------------------------------------------------ */
+
+.langsettings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.langpicker__label-text {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+:lang(hi) .langpicker__label-text {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.langpicker__hint {
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+:lang(hi) .langpicker__hint {
+  font-size: 12px;
+  line-height: var(--leading-deva);
+}
+
+.langnote {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
+:lang(hi) .langnote {
+  font-size: 12px;
+  line-height: var(--leading-deva);
+}
+
+/* Below the wide breakpoint the rail is a strip, and three stacked pickers
+   are too much of it. They sit side by side and wrap. */
+@media (max-width: 1279.98px) {
+  .chat__rail .langsettings {
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chat__rail .langpicker {
+    flex: 1 1 10rem;
+    min-width: 0;
+  }
+
+  /* The hints are for a settings column, not for a strip above a
+     conversation — the labels and the values say enough here. */
+  .chat__rail .langpicker__hint,
+  .chat__rail .langnote {
+    display: none;
+  }
+
+  .chat__rail-heading {
+    display: none;
+  }
+}
+
+/* Rail headings get the same treatment as sidebar headings: caps are a Latin
+   device, and Devanagari set in "caps" with letter-spacing is just harder to
+   read at the size a section label wants to be. */
+:lang(hi) .chat__rail-heading {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}

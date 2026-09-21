@@ -19,13 +19,15 @@ import type {
   StoredMessage,
 } from './types';
 import type { NoData } from '../weather/types';
+import type { LanguagePreferences } from '../i18n/preferences';
 
 export type AccountUser = {
   id: string;
   email: string | null;
   name: string | null;
   avatarUrl: string | null;
-  lang: string;
+  /** Interface, assistant and voice — each a language or `auto`. */
+  languages: LanguagePreferences;
 };
 
 export type AccountState = {
@@ -154,8 +156,21 @@ export async function fetchAccount(): Promise<AccountState> {
   };
 }
 
-export async function setAccountLang(lang: string): Promise<void> {
-  await call('/api/account', { method: 'PATCH', body: JSON.stringify({ lang }) });
+/**
+ * Keep the account's language choices in step with this device's.
+ *
+ * Fire-and-forget on purpose: the choice has already been applied locally and
+ * written to the browser, so a failed round trip costs cross-device sync, not
+ * the setting itself. Blocking a language toggle on a network request would
+ * make the interface feel broken over a bad connection, which is most of them.
+ */
+export async function setAccountLanguages(
+  languages: LanguagePreferences,
+): Promise<void> {
+  await call('/api/account', {
+    method: 'PATCH',
+    body: JSON.stringify({ languages }),
+  });
 }
 
 export async function signOutRequest(): Promise<void> {

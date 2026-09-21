@@ -41,7 +41,7 @@ import {
   registerPush,
   removeLocationRequest,
   renameConversationRequest,
-  setAccountLang,
+  setAccountLanguages,
   signOutRequest,
   unregisterPush,
   type AccountUser,
@@ -63,6 +63,25 @@ import {
   subscribeScrollback,
   writeScrollback,
 } from '@/lib/chat/scrollback';
+import {
+  deviceLanguages,
+  languagesSnapshot,
+  serverLanguagesSnapshot,
+  subscribeLanguages,
+  writeLanguagesLocal,
+} from '@/lib/i18n/local';
+import {
+  DEFAULT_PREFERENCES,
+  resolveLanguages,
+  type LanguagePreference,
+  type LanguagePreferences,
+  type ResolvedLanguages,
+} from '@/lib/i18n/preferences';
+import { translator, type Translate } from '@/lib/i18n/strings';
+import { bcp47 } from '@/lib/i18n/languages';
+
+/** The device's language list cannot change without a reload. */
+const noopSubscribeLanguages = () => () => {};
 
 const NO_ALERTS: AlertStatus = {
   enabled: false,
@@ -111,6 +130,14 @@ export type AppState = {
   pushPermission: PushPermission;
   pushAvailable: boolean;
 
+  /** What the person chose: interface, assistant and voice, each or `auto`. */
+  preferences: LanguagePreferences;
+  /** What those choices resolve to for this device, right now. */
+  languages: ResolvedLanguages;
+  /** One string in the interface language. The only way chrome gets words. */
+  t: Translate;
+  setLanguage: (which: keyof LanguagePreferences, value: LanguagePreference) => void;
+
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
 
@@ -136,7 +163,6 @@ export type AppState = {
   enableAlerts: () => Promise<{ ok: boolean; reason?: string }>;
   disableAlerts: () => Promise<void>;
 
-  syncLang: (lang: string) => void;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
 };
@@ -167,6 +193,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pushAvailable, setPushAvailable] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* ---- language ---------------------------------------------------- */
+
+  /*
+   * The three preferences, read through an external store so a returning
+   * visitor's choice is applied on the FIRST paint. Restoring it in an effect
+   * would render English for a frame and then correct itself, which reads as
+   * a bug even when the result is right.
+   */
+  const localPreferences = useSyncExternalStore(
+    subscribeLanguages,
+    languagesSnapshot,
+    serverLanguagesSnapshot,
+  );
+
+  /*
+   * The account's copy wins once it arrives, because it is the same person on
+   * another device. Until then — and always, for a guest — the browser's copy
+   * is what there is.
+   */
+  const [accountPreferences, setAccountPreferences] =
+    useState<LanguagePreferences | null>(null);
+
+  const preferences = accountPreferences ?? localPreferences;
+
+  /*
+   * `navigator.languages`, only consulted when something is on `auto`. The
+   * server renders with none of it and hydrates over the top.
+   */
+  const device = useSyncExternalStore(
+    noopSubscribeLanguages,
+    deviceLanguages,
+    () => undefined,
+  );
+
+  const languages = useMemo(
+    () => resolveLanguages(preferences, device),
+    [preferences, device],
+  );
+
+  const t = useMemo(() => translator(languages.ui), [languages.ui]);
+
+  /*
+   * The document's own language.
+   *
+   * Two things depend on it and neither is cosmetic: a screen reader picks
+   * its voice from it, and `brand.css` selects the Devanagari face and its
+   * looser leading through `:lang(hi)`. Setting it here means one write
+   * covers both, and every element inherits rather than being tagged.
+   */
+  useEffect(() => {
+    document.documentElement.lang = bcp47(languages.ui);
+  }, [languages.ui]);
 
   /*
    * The guest transcript, read from sessionStorage through the store rather
@@ -266,6 +345,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLocations(boot.locations);
       setReady(true);
 
+      /*
+       * Whose language choice wins.
+       *
+       * The account's, when it has one — it is the same person on another
+       * device, and that is what "syncs across devices" has to mean. When the
+       * account has never been told (everything still on auto) and this
+       * browser HAS been, the browser's choice is adopted upward, the same
+       * way the guest conversation is: a setting made before signing in is
+       * still a setting the person made.
+       */
+      if (boot.user) {
+        const fromAccount = boot.user.languages ?? DEFAULT_PREFERENCES;
+        const accountIsUntold =
+          fromAccount.ui === 'auto' &&
+          fromAccount.assistant === 'auto' &&
+          fromAccount.voice === 'auto';
+        const local = languagesSnapshot();
+        const localHasChoice =
+          local.ui !== 'auto' || local.assistant !== 'auto' || local.voice !== 'auto';
+
+        if (accountIsUntold && localHasChoice) {
+          setAccountPreferences(local);
+          void setAccountLanguages(local);
+        } else {
+          setAccountPreferences(fromAccount);
+          writeLanguagesLocal(fromAccount);
+        }
+      }
+
       // Read once and cleared from the address bar: a sign-in flag that stays
       // in the URL re-runs adoption on every refresh.
       const params = new URLSearchParams(window.location.search);
@@ -343,6 +451,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const newChat = useCallback(() => {
     setActiveId(null);
     setServerMessages(EMPTY);
+    // A new chat is not loading anything. Leaving this true — pressing New
+    // chat while another one was still opening — held the transcript blank
+    // behind a state that had nothing to resolve it.
+    setLoadingConversation(false);
     // A different key each time, so pressing "New chat" twice still resets a
     // view that is already showing a new chat.
     setViewKey(`new:${Date.now()}`);
@@ -562,20 +674,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   /* ---- account ----------------------------------------------------- */
 
-  const syncLang = useCallback(
-    (lang: string) => {
-      // Only when there is an account to keep it on. A guest's preference
-      // lives in their browser and has nowhere else to be.
-      if (!signedIn) return;
-      void setAccountLang(lang);
+  /**
+   * Change one preference, leaving the other two exactly as they were.
+   *
+   * This is the whole "do not couple them" rule in one function: there is no
+   * path here that writes a second field. Choosing a voice cannot move the
+   * interface, and choosing an interface cannot move the assistant.
+   *
+   * Written to the browser always, and to the account when there is one, so a
+   * guest keeps their choice and a signed-in person keeps it everywhere.
+   */
+  const setLanguage = useCallback(
+    (which: keyof LanguagePreferences, value: LanguagePreference) => {
+      const next = { ...preferences, [which]: value };
+
+      writeLanguagesLocal(next);
+      if (signedIn) {
+        setAccountPreferences(next);
+        void setAccountLanguages(next);
+      }
     },
-    [signedIn],
+    [preferences, signedIn],
   );
 
   const signOut = useCallback(async () => {
     await signOutRequest();
-    // Nothing of this account stays in memory for whoever signs in next.
+    // Nothing of this account stays in memory for whoever signs in next —
+    // including its language, which reverts to whatever this browser holds.
     cache.current.clear();
+    setAccountPreferences(null);
     setUser(null);
     setConversations([]);
     setActiveId(null);
@@ -612,6 +739,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       alerts,
       pushPermission: permission,
       pushAvailable,
+      preferences,
+      languages,
+      t,
+      setLanguage,
       drawerOpen,
       setDrawerOpen,
       newChat,
@@ -625,7 +756,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeLocation,
       enableAlerts,
       disableAlerts,
-      syncLang,
       signOut,
       deleteAccount,
     }),
@@ -644,6 +774,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       alerts,
       permission,
       pushAvailable,
+      preferences,
+      languages,
+      t,
+      setLanguage,
       drawerOpen,
       newChat,
       openConversation,
@@ -656,7 +790,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeLocation,
       enableAlerts,
       disableAlerts,
-      syncLang,
       signOut,
       deleteAccount,
     ],

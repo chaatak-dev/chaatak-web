@@ -239,7 +239,22 @@ export function detectScript(text: string): ScriptCode | null {
  * Only when the text has no letters to judge — a bare numeral, an emoji —
  * does the spoken choice break the tie.
  */
-export function replyLanguage(question: string, spoken: LanguageCode): InterfaceLang {
+export function replyLanguage(
+  question: string,
+  spoken: LanguageCode,
+  assistant: 'auto' | LanguageCode = 'auto',
+): InterfaceLang {
+  /*
+   * An explicit assistant language wins, and that is not a contradiction of
+   * the rule above. "Never switch script on the user" forbids switching it
+   * SILENTLY — because they picked a voice, or because a detector guessed.
+   * Someone who has gone to a setting and named the language they want
+   * answers in has said exactly what they want, and ignoring that in favour
+   * of the script they happened to type in would be its own kind of
+   * override.
+   */
+  if (assistant !== 'auto') return interfaceLanguage(assistant);
+
   const script = detectScript(question);
   if (script === null) return interfaceLanguage(spoken);
   return script === 'Deva' ? 'hi' : 'en';
@@ -312,7 +327,22 @@ const STYLES: Record<string, Omit<AnswerStyle, 'code'>> = {
  * enforces the script afterwards so a drift lands on the template instead of
  * on the user.
  */
-export function answerStyle(question: string, spoken: LanguageCode): AnswerStyle {
+export function answerStyle(
+  question: string,
+  spoken: LanguageCode,
+  assistant: 'auto' | LanguageCode = 'auto',
+): AnswerStyle {
+  /*
+   * Named outright, when the person has named it. `auto` — the default, and
+   * what every existing caller passes — keeps mirroring whatever they wrote,
+   * which is the behaviour this function was built for and the one the gate
+   * enforces the script of.
+   */
+  if (assistant !== 'auto') {
+    const chosen = STYLES[assistant] ?? STYLES.en;
+    return { code: assistant, ...chosen };
+  }
+
   const script = detectScript(question);
 
   let key: string;

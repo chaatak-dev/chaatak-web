@@ -17,16 +17,15 @@
  */
 
 import type { MicState, SpeechLang } from '@/lib/speech/types';
+import type { StringKey } from '@/lib/i18n/strings';
+import { useApp } from './AppState';
 
-const LABELS: Record<
-  Exclude<MicState, 'unsupported'>,
-  { hi: string; en: string }
-> = {
-  idle: { hi: 'बोलकर पूछें', en: 'Ask by voice' },
-  listening: { hi: 'सुन रहे हैं…', en: 'Listening' },
-  processing: { hi: 'जाँच रहे हैं…', en: 'Checking' },
-  failed: { hi: 'सुनाई नहीं दिया', en: 'Not heard' },
-  denied: { hi: 'माइक बंद है', en: 'Microphone off' },
+const LABELS: Record<Exclude<MicState, 'unsupported'>, StringKey> = {
+  idle: 'mic.idle',
+  listening: 'mic.listening',
+  processing: 'mic.processing',
+  failed: 'mic.failed',
+  denied: 'mic.denied',
 };
 
 function MicGlyph() {
@@ -60,10 +59,12 @@ type Props = {
 };
 
 export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
+  const { t } = useApp();
+
   // Nothing at all: no control, no explanation, no apology.
   if (state === 'unsupported') return null;
 
-  const label = LABELS[state];
+  const label = t(LABELS[state]);
   const isListening = state === 'listening';
   const inert = state === 'processing' || state === 'denied';
 
@@ -74,7 +75,7 @@ export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
         className="mic__button"
         onClick={isListening ? onStop : onStart}
         disabled={inert}
-        aria-label={isListening ? 'Stop listening' : 'Ask by voice'}
+        aria-label={isListening ? t('mic.listening') : t('mic.idle')}
         aria-pressed={isListening}
       >
         <MicGlyph />
@@ -87,10 +88,7 @@ export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
         happening at all.
       */}
       <p className="mic__label" role="status" aria-live="polite">
-        <span lang="hi" className="mic__label-hi">
-          {label.hi}
-        </span>
-        <span className="mic__label-en">{label.en}</span>
+        {label}
       </p>
 
       {isListening && partial ? (
@@ -100,21 +98,11 @@ export function Mic({ state, lang, partial, onStart, onStop, compact }: Props) {
       ) : null}
 
       {state === 'failed' ? (
-        <p className="mic__statement">
-          <span lang="hi">कुछ सुनाई नहीं दिया। फिर से बोलें, या लिखकर पूछें।</span>
-          <span className="mic__statement-en">
-            Nothing was heard. Try again, or type your question.
-          </span>
-        </p>
+        <p className="mic__statement">{t('mic.failedBody')}</p>
       ) : null}
 
       {state === 'denied' ? (
-        <p className="mic__statement">
-          <span lang="hi">माइक की अनुमति नहीं है। नीचे लिखकर पूछें।</span>
-          <span className="mic__statement-en">
-            Microphone permission is off. Type your question below.
-          </span>
-        </p>
+        <p className="mic__statement">{t('mic.deniedBody')}</p>
       ) : null}
     </div>
   );
