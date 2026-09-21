@@ -193,6 +193,15 @@ function RecentRow({
         type="button"
         className="recents__open"
         onClick={() => app.openConversation(id)}
+        /*
+          Read ahead on intent. A pointer resting on a row, or a finger
+          touching it, comes a few hundred milliseconds before the click —
+          which is most of what opening a conversation costs. By the time the
+          click lands the messages are usually already here.
+        */
+        onPointerEnter={() => app.prefetchConversation(id)}
+        onTouchStart={() => app.prefetchConversation(id)}
+        onFocus={() => app.prefetchConversation(id)}
         aria-current={active ? 'true' : undefined}
       >
         {label}

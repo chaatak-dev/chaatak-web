@@ -99,6 +99,15 @@ export function ChatView() {
   const [partial, setPartial] = useState('');
   const [speaking, setSpeaking] = useState(false);
   const [locationNeed, setLocationNeed] = useState<LocationNeed>(null);
+  /**
+   * Whether opening has taken long enough to be worth saying out loud.
+   *
+   * A conversation that has been read once opens on the same tick, and most
+   * cold opens land inside a couple of hundred milliseconds. A loading line
+   * that appears and vanishes in that time is a flash, not feedback — so the
+   * transcript area stays empty and quiet until it is genuinely slow.
+   */
+  const [slowOpen, setSlowOpen] = useState(false);
 
   const sessionRef = useRef<{ stop(): void } | null>(null);
   const speakingRef = useRef<{ cancel(): void } | null>(null);
@@ -141,6 +150,17 @@ export function ChatView() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages]);
+
+  useEffect(() => {
+    if (!app.loadingConversation) return;
+    // Set from a timer, not from the effect body: a fast open never renders
+    // this at all.
+    const timer = setTimeout(() => setSlowOpen(true), 250);
+    return () => {
+      clearTimeout(timer);
+      setSlowOpen(false);
+    };
+  }, [app.loadingConversation]);
 
   // Registers the offline shell. Without it a cold start with no network
   // reaches the browser's error page and the cached warning is never seen —
@@ -499,10 +519,17 @@ export function ChatView() {
         aria-label="Conversation"
       >
         {app.loadingConversation ? (
-          <p className="chat__thinking">
-            <span lang="hi">बातचीत खुल रही है…</span>
-            <span className="chat__thinking-en">Opening</span>
-          </p>
+          /*
+            Deliberately nothing for the first quarter second. Falling through
+            to the empty state instead would flash "ask me anything" across a
+            conversation that is about to appear.
+          */
+          slowOpen ? (
+            <p className="chat__thinking">
+              <span lang="hi">बातचीत खुल रही है…</span>
+              <span className="chat__thinking-en">Opening</span>
+            </p>
+          ) : null
         ) : messages.length === 0 && offline && !cached ? (
           /*
            * Offline with nothing saved. It shows no weather content at all,

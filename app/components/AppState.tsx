@@ -32,7 +32,7 @@ import {
   deleteAccountRequest,
   deleteAllConversationsRequest,
   deleteConversationRequest,
-  fetchAccount,
+  fetchBootstrap,
   fetchConversations,
   fetchLocations,
   fetchMessages,
@@ -116,6 +116,14 @@ export type AppState = {
 
   newChat: () => void;
   openConversation: (id: string) => void;
+  /**
+   * Warm the cache for a conversation the person is about to open.
+   *
+   * Called on hover and on touch-start, where there is a few hundred
+   * milliseconds of human intent before the click lands. Cheap, idempotent,
+   * and silently skipped for anything already held.
+   */
+  prefetchConversation: (id: string) => void;
   noteConversation: (id: string, title: string | null) => void;
   rename: (id: string, title: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -182,6 +190,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [signedIn],
   );
 
+  /*
+   * Conversations already read, kept for the rest of the session.
+   *
+   * Switching back to a chat that has been opened once costs nothing: it is
+   * already here, it renders on the same tick, and there is no loading state
+   * because there is nothing to wait for. A background re-read follows so
+   * another device's messages still arrive, but it never blocks the paint.
+   *
+   * A ref rather than state — writing to it must not re-render, and every
+   * read of it happens inside an event handler that is about to set state
+   * anyway.
+   */
+  const cache = useRef(new Map<string, Message[]>());
+
+  /** Prefetches already running, so hovering a row twice reads once. */
+  const inFlight = useRef(new Set<string>());
+
+  /**
+   * The open conversation, readable from inside an async callback.
+   *
+   * A background read that finishes after the person has moved on must not
+   * write its transcript over the one they are now looking at, and the
+   * closure it lives in captured the id from the render that started it.
+   */
+  const activeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  /*
+   * The open conversation's transcript, mirrored into the cache.
+   *
+   * Done here rather than in each of the six places that can change it, so a
+   * new path cannot forget to. Writing to a Map is not a render, which is why
+   * this effect is allowed to be an effect.
+   */
+  useEffect(() => {
+    if (activeId && signedIn) cache.current.set(activeId, serverMessages);
+  }, [activeId, serverMessages, signedIn]);
+
   /* ---- refreshing what the server holds ---------------------------- */
 
   const refreshConversations = useCallback(async () => {
@@ -205,12 +254,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     void (async () => {
-      const account = await fetchAccount();
+      // ONE request. Account, conversations and places arrive together, so
+      // the sidebar does not wait on a second hop to find out what to draw.
+      const boot = await fetchBootstrap();
       if (cancelled) return;
 
-      setConfigured(account.configured);
-      setUser(account.user);
-      setAlerts(account.alerts);
+      setConfigured(boot.configured);
+      setUser(boot.user);
+      setAlerts(boot.alerts);
+      setConversations(boot.conversations);
+      setLocations(boot.locations);
       setReady(true);
 
       // Read once and cleared from the address bar: a sign-in flag that stays
@@ -233,11 +286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSignInError('Accounts are not configured on this deployment.');
       }
 
-      if (!account.user) return;
-
-      // Signed in: the conversation list and the places being watched.
-      void refreshConversations();
-      void refreshLocations();
+      if (!boot.user) return;
 
       /*
        * Adopt whatever the person was in the middle of.
@@ -308,30 +357,70 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const held = cache.current.get(id);
+
       setActiveId(id);
       setViewKey(id);
-      setServerMessages(EMPTY);
-      setLoadingConversation(true);
       setDrawerOpen(false);
+
+      /*
+       * Already read once: it renders on this tick. No spinner, no request
+       * the person waits on — the only honest reason to show a loading state
+       * is that there is genuinely nothing to show yet.
+       */
+      setServerMessages(held ?? EMPTY);
+      setLoadingConversation(!held);
 
       void (async () => {
         const loaded = await fetchMessages(id);
+
+        // The person may have moved on while this was in flight. Writing it
+        // now would drop another conversation's transcript on top of the one
+        // they are reading.
+        if (activeIdRef.current !== id) return;
+
         setLoadingConversation(false);
+
         // Null means the server does not have it — deleted in another tab, or
         // never this account's. Falling back to a new chat is the honest
         // outcome; showing an empty conversation that cannot be written to is
         // not.
         if (loaded === null) {
+          cache.current.delete(id);
           setActiveId(null);
           setViewKey(`new:${Date.now()}`);
           void refreshConversations();
           return;
         }
-        setServerMessages(loaded as Message[]);
+
+        const next = loaded as Message[];
+        cache.current.set(id, next);
+
+        // Skip the re-render when the background read agrees with what is
+        // already on screen, which is the usual case.
+        setServerMessages((current) => (sameTranscript(current, next) ? current : next));
       })();
     },
     [activeId, refreshConversations],
   );
+
+  /**
+   * Read ahead for a conversation the pointer is resting on.
+   *
+   * By the time a click lands the messages are usually already here, so the
+   * open is a state change rather than a request. Skipped for anything held
+   * or in flight, so hovering down a list costs one read per row at most.
+   */
+  const prefetchConversation = useCallback((id: string) => {
+    if (!id || cache.current.has(id) || inFlight.current.has(id)) return;
+
+    inFlight.current.add(id);
+    void fetchMessages(id)
+      .then((loaded) => {
+        if (loaded) cache.current.set(id, loaded as Message[]);
+      })
+      .finally(() => inFlight.current.delete(id));
+  }, []);
 
   /**
    * A turn just created or touched a conversation server-side.
@@ -384,6 +473,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const ok = await deleteConversationRequest(id);
       if (!ok) return;
 
+      cache.current.delete(id);
       setConversations((current) => current.filter((c) => c.id !== id));
       // Deleting the conversation you are looking at leaves you looking at
       // nothing, so it starts a new one.
@@ -399,6 +489,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const removeAll = useCallback(async () => {
     const ok = await deleteAllConversationsRequest();
     if (!ok) return;
+    cache.current.clear();
     setConversations([]);
     setActiveId(null);
     setViewKey(`new:${Date.now()}`);
@@ -483,6 +574,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await signOutRequest();
+    // Nothing of this account stays in memory for whoever signs in next.
+    cache.current.clear();
     setUser(null);
     setConversations([]);
     setActiveId(null);
@@ -523,6 +616,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setDrawerOpen,
       newChat,
       openConversation,
+      prefetchConversation,
       noteConversation,
       rename,
       remove,
@@ -553,6 +647,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       drawerOpen,
       newChat,
       openConversation,
+      prefetchConversation,
       noteConversation,
       rename,
       remove,
@@ -568,6 +663,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+/**
+ * Whether a background re-read actually changed anything.
+ *
+ * Compares what a transcript is made of rather than object identity — a fresh
+ * fetch is always a new array, and swapping it in unchanged would re-render
+ * the conversation and jump the scroll for nothing.
+ */
+function sameTranscript(a: Message[], b: Message[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((message, i) => message.id === b[i].id && message.text === b[i].text);
 }
 
 /**

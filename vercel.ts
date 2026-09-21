@@ -23,6 +23,25 @@ import { type VercelConfig } from '@vercel/config/v1';
 // characters that would close one.)
 export const config: VercelConfig = {
   framework: 'nextjs',
+
+  /*
+   * Run in Mumbai, next to the data.
+   *
+   * Vercel defaults functions to iad1 (Washington DC). Everything this app
+   * talks to is in ap-south-1: Supabase Postgres, Supabase Auth, and IMD's
+   * own gateway. Every query was therefore crossing the Atlantic and the
+   * Indian Ocean twice.
+   *
+   * Measured, not assumed. From India the database answers a query in 25ms.
+   * From iad1 the same query cost ~330ms, and opening a saved conversation —
+   * one session check plus two queries, in sequence — took 1.3 SECONDS of
+   * which almost all was distance.
+   *
+   * The audience is in India, the data is in India, so the compute is in
+   * India. A single region is also all the Hobby plan allows, which happens
+   * to be the right answer here rather than a compromise.
+   */
+  regions: ['bom1'],
 };
 
 export default config;

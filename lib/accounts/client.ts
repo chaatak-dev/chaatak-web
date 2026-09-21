@@ -48,6 +48,14 @@ const NO_ALERTS: AlertStatus = {
   channels: { webpush: 0, telegram: 0 },
 };
 
+const NO_LOCATIONS: LocationsState = {
+  locations: [],
+  limit: 3,
+  used: 0,
+  remaining: 3,
+  alerts: NO_ALERTS,
+};
+
 async function call<T>(
   path: string,
   init?: RequestInit,
@@ -90,11 +98,50 @@ async function call<T>(
 /* Account                                                             */
 /* ------------------------------------------------------------------ */
 
+/** Everything the first paint needs, in one request. */
+export type Bootstrap = AccountState & {
+  conversations: Conversation[];
+  locations: LocationsState;
+};
+
+/**
+ * The single call the app opens with.
+ *
+ * One request rather than three in two waves, and one session check rather
+ * than three. A guest gets the same shape with nothing in it, so the sidebar
+ * never waits on a second hop to discover there is nothing to show.
+ */
+export async function fetchBootstrap(): Promise<Bootstrap> {
+  const result = await call<Bootstrap>('/api/bootstrap');
+
+  if (!result.ok) {
+    return {
+      configured: false,
+      user: null,
+      alerts: NO_ALERTS,
+      conversations: [],
+      locations: NO_LOCATIONS,
+    };
+  }
+
+  const data = result.data;
+
+  return {
+    configured: Boolean(data.configured),
+    user: data.user ?? null,
+    alerts: data.alerts ?? NO_ALERTS,
+    warning: data.warning,
+    conversations: data.conversations ?? [],
+    locations: data.locations ?? NO_LOCATIONS,
+  };
+}
+
 /**
  * Who is signed in.
  *
  * Answers for a guest too — `user: null` is the answer the interface needs in
- * order to show a sign-in button rather than a spinner.
+ * order to show a sign-in button rather than a spinner. Kept for the targeted
+ * refresh; the first paint uses `fetchBootstrap`.
  */
 export async function fetchAccount(): Promise<AccountState> {
   const result = await call<AccountState>('/api/account');

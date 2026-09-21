@@ -126,21 +126,36 @@ export async function conversationMessages(
   userId: string,
   conversationId: ConversationId,
 ): Promise<StoredMessage[] | null> {
-  const { rows: owned } = await db().query(
-    `select 1 from conversations where id = $1 and user_id = $2`,
+  /*
+   * ONE round trip, not two.
+   *
+   * This was an ownership check followed by a message read, which is two
+   * sequential queries for one screen — and on a connection to another
+   * continent that was most of the time it took to open a saved
+   * conversation. The LEFT JOIN answers both questions at once:
+   *
+   *   no rows        → the conversation is absent, or belongs to someone else
+   *   one null row   → it is yours and has no messages yet
+   *   n rows         → it is yours, and here they are
+   *
+   * The ownership predicate is still on `conversations`, so a message can
+   * only ever be reached through a conversation this user owns.
+   */
+  const { rows } = await db().query(
+    `select m.id, m.role, m.text, m.lang, m.grounding, m.created_at
+       from conversations c
+       left join messages m on m.conversation_id = c.id
+      where c.id = $1 and c.user_id = $2
+      order by m.created_at asc, m.seq asc`,
     [conversationId, userId],
   );
+
   // Absent and not-yours are the same answer. Telling them apart would
   // confirm the existence of another account's conversation.
-  if (owned.length === 0) return null;
+  if (rows.length === 0) return null;
 
-  const { rows } = await db().query(
-    `select id, role, text, lang, grounding, created_at
-       from messages
-      where conversation_id = $1 and user_id = $2
-      order by created_at asc, seq asc`,
-    [conversationId, userId],
-  );
+  // Owned, but nothing said in it yet.
+  if (rows[0].id === null) return [];
 
   return rows.map(toMessage);
 }

@@ -204,6 +204,24 @@ try {
   const missing = await store.conversationMessages(userId, randomUUID() as ConversationId);
   assert(missing === null, 'a conversation that does not exist reads as absent');
 
+  /*
+   * The three answers the single-query read has to keep apart. It became one
+   * LEFT JOIN to save a round trip, and "yours but empty" and "not yours" both
+   * come back as an absence of messages — so they are asserted separately.
+   */
+  const empty = await store.createConversation(userId, { title: 'Empty one' });
+  const emptyMessages = await store.conversationMessages(userId, empty.id);
+  assert(
+    Array.isArray(emptyMessages) && emptyMessages.length === 0,
+    'a conversation with no messages reads as empty, not as absent',
+    JSON.stringify(emptyMessages),
+  );
+  assert(
+    (await store.conversationMessages(stranger, empty.id)) === null,
+    "and another account still cannot tell that it exists",
+  );
+  await store.deleteConversation(userId, empty.id);
+
   /* ---- monitored locations ---------------------------------------- */
 
   console.log('\nmonitored locations');
