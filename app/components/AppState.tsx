@@ -78,6 +78,13 @@ import {
   type ResolvedLanguages,
 } from '@/lib/i18n/preferences';
 import { translator, type Translate } from '@/lib/i18n/strings';
+import {
+  describesSame,
+  fetchSnapshot,
+  type WeatherContextState,
+  type WeatherOrigin,
+} from '@/lib/weather/context';
+import type { WeatherSnapshot } from '@/lib/weather/api';
 import { bcp47 } from '@/lib/i18n/languages';
 
 /** The device's language list cannot change without a reload. */
@@ -129,6 +136,24 @@ export type AppState = {
   alerts: AlertStatus;
   pushPermission: PushPermission;
   pushAvailable: boolean;
+
+  /**
+   * The weather the rail is showing, and where its location came from.
+   *
+   * ONE snapshot, shared with the conversation. The chat route returns what
+   * it answered from and that is adopted as-is; the rail only fetches when it
+   * needs a place the conversation has not asked about. Two independent
+   * fetches would disagree by a degree, visibly, side by side.
+   */
+  weather: WeatherContextState;
+  weatherOrigin: WeatherOrigin | null;
+  /** Adopt a snapshot the conversation already obtained. Never re-fetches. */
+  adoptSnapshot: (snapshot: WeatherSnapshot, origin: WeatherOrigin) => void;
+  /** Ask for a place the conversation has not. Skips work already done. */
+  showWeatherFor: (
+    target: { place: string } | { latitude: number; longitude: number },
+    origin: WeatherOrigin,
+  ) => void;
 
   /** What the person chose: interface, assistant and voice, each or `auto`. */
   preferences: LanguagePreferences;
@@ -193,6 +218,57 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pushAvailable, setPushAvailable] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* ---- weather ------------------------------------------------------ */
+
+  const [weather, setWeather] = useState<WeatherContextState>({ status: 'idle' });
+  const [weatherOrigin, setWeatherOrigin] = useState<WeatherOrigin | null>(null);
+  /** The in-flight request, so a newer place cancels an older one. */
+  const weatherRequest = useRef<AbortController | null>(null);
+
+  const adoptSnapshot = useCallback(
+    (snapshot: WeatherSnapshot, origin: WeatherOrigin) => {
+      // The conversation already paid for this. Anything in flight for a
+      // different place is now obsolete.
+      weatherRequest.current?.abort();
+      weatherRequest.current = null;
+      setWeather({ status: 'ready', snapshot });
+      setWeatherOrigin(origin);
+    },
+    [],
+  );
+
+  const showWeatherFor = useCallback(
+    (
+      target: { place: string } | { latitude: number; longitude: number },
+      origin: WeatherOrigin,
+    ) => {
+      setWeatherOrigin(origin);
+
+      setWeather((current) => {
+        // Already showing exactly this place: nothing to do and nothing to
+        // fetch. This is what stops the rail duplicating the chat's work.
+        if ('latitude' in target && describesSame(current, target)) return current;
+
+        weatherRequest.current?.abort();
+        const controller = new AbortController();
+        weatherRequest.current = controller;
+
+        void fetchSnapshot(target, controller.signal).then((next) => {
+          // A newer request replaced this one while it was in flight.
+          if (weatherRequest.current !== controller) return;
+          weatherRequest.current = null;
+          setWeather(next);
+        });
+
+        return {
+          status: 'loading',
+          query: 'place' in target ? target.place : `${target.latitude},${target.longitude}`,
+        };
+      });
+    },
+    [],
+  );
 
   /* ---- language ---------------------------------------------------- */
 
@@ -739,6 +815,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       alerts,
       pushPermission: permission,
       pushAvailable,
+      weather,
+      weatherOrigin,
+      adoptSnapshot,
+      showWeatherFor,
       preferences,
       languages,
       t,
@@ -774,6 +854,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       alerts,
       permission,
       pushAvailable,
+      weather,
+      weatherOrigin,
+      adoptSnapshot,
+      showWeatherFor,
       preferences,
       languages,
       t,

@@ -102,7 +102,7 @@ export function CurrentConditions({
 
       <Provenance
         source={reading.provenance.source}
-        endpoint={reading.provenance.endpoint}
+        nature={reading.provenance.nature}
         timestamp={reading.provenance.issuedAt}
         basis={reading.provenance.timeBasis}
         timeZone={timeZone}

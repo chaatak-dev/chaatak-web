@@ -67,7 +67,7 @@ export function ChatTurn({ message }: { message: Message }) {
         {grounding ? (
           <Provenance
             source={grounding.provenance.source}
-            endpoint={grounding.provenance.endpoint}
+            nature={grounding.provenance.nature}
             timestamp={grounding.provenance.issuedAt}
             basis={grounding.provenance.timeBasis}
             timeZone={grounding.place.timezone}

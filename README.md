@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 370 tests, no network or database needed
+npm test        # 421 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Every third-party call goes
@@ -172,6 +172,69 @@ a severity.
 
 ---
 
+## The interface
+
+Three columns on a desktop: conversations on the left, the conversation in the
+middle, **the weather on the right**. The settings that used to hold a
+permanent rail are behind one control in the account menu, which is where they
+belonged — a person configures Chaatak once and asks it things daily, and the
+permanent rail was spending the best column on the rarer job. There is one
+settings surface, not two.
+
+**The weather rail follows the conversation and adopts its snapshot.** It
+shows the same values the answer was written from rather than fetching its
+own: two surfaces that fetch independently eventually disagree by a degree
+because they landed in different cache windows, and a reader cannot tell which
+one to believe. With no conversation location and no granted permission the
+rail shows an empty state and an offer. It never guesses a city.
+
+**The transcript scrolls in one container, and the rules about it are tested.**
+`lib/chat/scroll.ts` holds them as pure functions: follow the tail only while
+the reader is already near it, preserve the reading position when older
+messages are prepended above, and offer a jump control when the reader is not
+at the bottom. The container is a `min-height: 0` flex column with
+`overflow-anchor: none`, not a scrolling page under an absolutely positioned
+composer — the previous arrangement needed padding to match a height it could
+not know, and the transcript ran underneath the composer whenever that guess
+was wrong.
+
+### The map
+
+MapLibre GL over [OpenFreeMap](https://openfreemap.org) vector tiles. The
+base-map provider is abstracted in `lib/map/layers.ts` so it can be swapped
+without touching a weather layer, and a test asserts that no layer names a
+provider. Attribution is rendered, not optional.
+
+Eight layers — temperature, precipitation, wind, cloud, air quality, UV,
+pressure and alerts. Each carries its own colour scale, and the legend and the
+canvas read it through the same function so they cannot disagree about what a
+number looks like. The ramps are monotonic: a rainbow scale makes a small
+difference look larger than a big one, which is how heatwaves get misread.
+
+Sampling is bounded. `/api/map` takes the viewport, samples a grid **capped at
+144 points**, and is cached server-side. A layer that scaled its request with
+the viewport would ask for ten thousand readings at country zoom.
+
+**The alerts layer draws districts, never invented polygons.** IMD publishes a
+hazard code per district id and no geometry of any kind. A drawn boundary
+would be one we made up, and a boundary that is nearly right tells somebody on
+the wrong side of it that they are safe.
+
+### Air quality
+
+`AirQualitySource` is an interface with one implementation today: Open-Meteo's
+CAMS model, reported on the **European** AQI breakpoints. It is labelled as
+modelled and labelled as European in the interface, not in a comment, and
+`station` is `null` and says so.
+
+India's official index is CPCB's, on different breakpoints and from physical
+monitoring stations. A model-derived European number presented as "AQI" is
+read by anyone who knows the Indian scale as something it is not. When a CPCB
+station feed is wired in behind the same interface it will carry a station and
+stop being an approximation; until then the number says exactly what it is.
+
+---
+
 ## The alert daemon
 
 `POST /api/cron/warnings`, authenticated with `Authorization: Bearer $CRON_SECRET`.
@@ -227,10 +290,23 @@ the dashboard stays green while nobody is being warned about anything.
 
 ## Data sources
 
-Open-Meteo is the development source while IMD access is pending; it has no
-warning product, so the alert pipeline is exercised against a synthetic fixture
-source. IMD swaps in behind the same `WeatherSource` interface with no change
-above the adapter layer.
+**IMD is the authority on what is dangerous. Open-Meteo says what is happening
+this hour.** That split is the data's, not a preference. IMD's synoptic
+stations report on a three-hourly cycle and the endpoint serves the last row
+whenever it is asked, so at six in the evening it returns the twelve o'clock
+observation — correctly, and with an honest timestamp — and Chaatak rendered
+it under a sentence beginning "अभी", right now. Every individual part of that
+was true and the whole of it was not.
+
+So `WEATHER_SOURCE=imd` means district warnings from IMD and current
+conditions and the forecast from Open-Meteo, each under its own name. The
+station transport is kept and exported as `stationObservation`, for a caller
+that wants an observation **as** an observation with its age attached, rather
+than as a stand-in for the present.
+
+Open-Meteo has no warning product, so the alert pipeline is exercised against
+a synthetic fixture source. Either source swaps behind the same
+`WeatherSource` interface with no change above the adapter layer.
 
 **Two selectors, deliberately.** `WEATHER_SOURCE` drives everything a visitor
 can see and **refuses synthetic sources outright**; `WARNING_SOURCE` drives the
@@ -256,6 +332,21 @@ Place resolution is routed by script rather than by language: Open-Meteo's
 geocoder returns nothing at all for Devanagari, so Devanagari queries go to
 Nominatim and Latin queries stay on Open-Meteo. Transliterating first was tried
 and rejected — it fails wrongly rather than loudly.
+
+### A value carries what kind of value it is
+
+Provenance now states `nature` — `observation`, `model` or `bulletin` — and
+carries `observedAt` beside `issuedAt`. `lib/weather/freshness.ts` ages a value
+from `observedAt ?? issuedAt` and **never from the time the HTTP response came
+back**: fetch time is a property of the network, and using it would make a
+six-hour-old reading look a second old. Thresholds differ by nature, because a
+three-hour-old model run is ordinary and a three-hour-old observation is not,
+and an unknown nature is held to the strictest of them. A value past the stale
+threshold says so in words, with its age.
+
+The provenance line reads `Open-Meteo · model · Updated 05:15 IST`. `endpoint`
+is still carried for traceability and is no longer rendered — an API path told
+the farmer nothing and told everyone else our URL structure.
 
 ## Failure reporting
 

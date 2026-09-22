@@ -104,7 +104,7 @@ export function Outlook({
 
       <Provenance
         source={forecast.provenance.source}
-        endpoint={forecast.provenance.endpoint}
+        nature={forecast.provenance.nature}
         timestamp={forecast.provenance.issuedAt}
         basis={forecast.provenance.timeBasis}
         timeZone={timeZone}

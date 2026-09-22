@@ -44,7 +44,6 @@ export function NoDataField({
 
       <Provenance
         source={state.source}
-        endpoint={state.endpoint}
         timestamp={state.checkedAt}
         basis="checked"
         timeZone={timeZone}

@@ -67,7 +67,28 @@ export type CannotParse = {
   servedBy: ParseLayer;
 };
 
-export type ParseResult = ParsedQuery | CannotParse;
+/**
+ * A weather question about wherever the person is.
+ *
+ * A first-class outcome, not a failed place lookup. "Weather near me" names
+ * its place perfectly well — the place is "here" — and the difference between
+ * this and `noPlace` is the difference between going straight to the browser's
+ * location and asking "which place?" about a question that already answered
+ * that.
+ *
+ * It carries no `place`, and it deliberately does NOT inherit the
+ * conversation's standing place: somebody who asked about Delhi and then asks
+ * what it is like near them is asking about near them.
+ */
+export type CurrentLocationQuery = {
+  kind: 'currentLocation';
+  intent: Intent;
+  timeWindow: TimeWindow;
+  variable: Variable;
+  servedBy: ParseLayer;
+};
+
+export type ParseResult = ParsedQuery | CurrentLocationQuery | CannotParse;
 
 export type ParseContext = {
   lang: QueryLang;

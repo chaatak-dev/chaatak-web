@@ -5,13 +5,28 @@
  * exists to relay. Everything above the adapter layer is unchanged by its
  * arrival — that is what the interface was for.
  *
- * WHAT IS IMPLEMENTED
+ * WHAT IMD IS FOR HERE: WARNINGS. Nothing else.
  *
  * District warnings, from `api/v1/districtwarning?id=<Obj_id>`. Current
- * conditions and the forecast still come from Open-Meteo, and still say so in
- * their own provenance: IMD's station endpoints are keyed on station codes
- * whose mapping from a place has not been verified, and guessing it would put
- * another town's temperature on screen.
+ * conditions and the forecast come from Open-Meteo, under Open-Meteo's own
+ * name, because that is the division of labour the data actually supports:
+ * IMD is the authority on what is DANGEROUS, and Open-Meteo is the source
+ * that can say what is happening at this hour.
+ *
+ * WHY THE STATION OBSERVATIONS ARE NOT THE CURRENT-WEATHER SOURCE, having
+ * briefly been exactly that. IMD's synoptic stations report on a three-hourly
+ * cycle and the endpoint serves the last row whenever you ask it. So at six in
+ * the evening it returns the twelve o'clock observation — correctly, with an
+ * honest timestamp — and Chaatak rendered it under a sentence beginning
+ * "अभी", right now. Every individual part of that was true and the whole of
+ * it was not. An observation is the better number when it is fresh and the
+ * worse one when it is six hours old, and nothing in the endpoint tells you
+ * which you are getting until you look at the stamp.
+ *
+ * The station code below is therefore retained and unused by the source
+ * interface: `stationObservation` is exported for a caller that wants an
+ * observation AS an observation, with its own age attached, rather than as a
+ * stand-in for the present. See lib/weather/freshness.ts.
  *
  * THE PAYLOAD, as IMD actually returns it
  *
@@ -246,6 +261,10 @@ export function rowToWarnings(
         endpoint,
         issuedAt: issuedAt ?? `${validFrom}T00:00:00${IST_OFFSET}`,
         timeBasis: issuedAt ? 'issued' : 'valid',
+        // A bulletin somebody published. Its age says nothing about whether
+        // it is in force — the validity window does that.
+        nature: 'bulletin',
+        fetchedAt: new Date().toISOString(),
       },
     });
   }
@@ -364,8 +383,17 @@ async function fetchWarnings(
 /* Readings and the forecast                                           */
 /* ------------------------------------------------------------------ */
 
-const CURRENT_PATH = 'api/v1/current_wx';
-const FORECAST_PATH = 'api/v1/cityforecast';
+/*
+ * IMD's station endpoints, with their parsers kept beside them.
+ *
+ * Neither is the source for current conditions or the forecast any more — see
+ * the note at the top of this file. They are exported rather than deleted
+ * because the transport, the station mapping and the payload parsing were all
+ * established against live data and verified, and that work should not have
+ * to be done twice the day a denser observation network appears.
+ */
+export const CURRENT_PATH = 'api/v1/current_wx';
+export const FORECAST_PATH = 'api/v1/cityforecast';
 
 /**
  * IMD sends every value as a string, and sends absence several ways: null, an
@@ -422,7 +450,17 @@ export function toReading(row: RawRow, endpoint: string): Reading | null {
     kind: 'reading',
     conditionCode: null,
     measurements,
-    provenance: { source: SOURCE, endpoint, issuedAt, timeBasis: 'issued' },
+    provenance: {
+      source: SOURCE,
+      endpoint,
+      issuedAt,
+      timeBasis: 'issued',
+      // A thermometer read this. The hour it was read is the hour that
+      // matters, and it is kept apart from when we happened to ask.
+      nature: 'observation',
+      observedAt: issuedAt,
+      fetchedAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -464,6 +502,8 @@ export function toForecast(row: RawRow, days: number, endpoint: string): Forecas
       endpoint,
       issuedAt: date + 'T00:00:00' + IST_OFFSET,
       timeBasis: 'issued',
+      nature: 'bulletin',
+      fetchedAt: new Date().toISOString(),
     },
   };
 }
@@ -520,67 +560,54 @@ async function fetchStation(
  * truth. When IMD's station mapping is verified those two delegations become
  * IMD calls and nothing above this file changes.
  */
+/**
+ * The nearest IMD station's last observation, AS an observation.
+ *
+ * Not wired into `WeatherSource`, deliberately. Anything calling this is
+ * asking for a measurement and gets one with `nature: 'observation'` and its
+ * own time attached, so `freshness()` can say whether it is still worth
+ * calling recent. It exists so that the verified station transport is not
+ * thrown away, and so that the day IMD exposes a denser observation network
+ * this is the seam it arrives through.
+ */
+export async function stationObservation(
+  location: Location,
+): Promise<Reading | null> {
+  let credentials: ImdCredentials;
+  try {
+    credentials = imdCredentials();
+  } catch (error) {
+    if (isConfigurationError(error)) return null;
+    throw error;
+  }
+
+  const near = nearestStation('observation', location.latitude, location.longitude);
+  if (!near) return null;
+
+  const endpoint = imdEndpoint(CURRENT_PATH);
+  return cached('imd:observation:' + near.station.id, TTL.current, async () => {
+    const row = await fetchStation(CURRENT_PATH, near.station.id, credentials);
+    return row ? toReading(row, endpoint) : null;
+  });
+}
+
 export const imdSource: WeatherSource = {
   name: SOURCE,
 
   /**
-   * IMD when a station is close enough to speak for this place; otherwise
-   * Open-Meteo, under Open-Meteo's own name.
+   * Open-Meteo, always, and saying so.
    *
-   * The fallback is not a failure state. It is the honest answer when IMD has
-   * no station nearby, and it keeps its own provenance so nothing on screen
-   * claims IMD measured something IMD did not.
+   * Not a fallback and not a degradation — it is the source for this question.
+   * See the note at the top of this file for why an endpoint that serves the
+   * last three-hourly observation is the wrong thing to answer "what is it
+   * doing right now" with.
    */
   async getCurrent(location: Location): Promise<Reading | NoData> {
-    let credentials: ImdCredentials;
-    try {
-      credentials = imdCredentials();
-    } catch (error) {
-      if (isConfigurationError(error)) return openMeteo.getCurrent(location);
-      throw error;
-    }
-
-    const near = nearestStation('observation', location.latitude, location.longitude);
-    if (!near) return openMeteo.getCurrent(location);
-
-    const endpoint = imdEndpoint(CURRENT_PATH);
-    const reading = await cached(
-      'imd:current:' + near.station.id,
-      TTL.current,
-      async () => {
-        const row = await fetchStation(CURRENT_PATH, near.station.id, credentials);
-        return row ? toReading(row, endpoint) : null;
-      },
-    );
-
-    // Unreachable, or nothing readable in it. Not a failure the visitor should
-    // wear when a second source can answer.
-    return reading ?? openMeteo.getCurrent(location);
+    return openMeteo.getCurrent(location);
   },
 
   async getForecast(location: Location, days: number): Promise<Forecast | NoData> {
-    let credentials: ImdCredentials;
-    try {
-      credentials = imdCredentials();
-    } catch (error) {
-      if (isConfigurationError(error)) return openMeteo.getForecast(location, days);
-      throw error;
-    }
-
-    const near = nearestStation('forecast', location.latitude, location.longitude);
-    if (!near) return openMeteo.getForecast(location, days);
-
-    const endpoint = imdEndpoint(FORECAST_PATH);
-    const forecast = await cached(
-      'imd:forecast:' + near.station.id + ':' + days,
-      TTL.daily,
-      async () => {
-        const row = await fetchStation(FORECAST_PATH, near.station.id, credentials);
-        return row ? toForecast(row, days, endpoint) : null;
-      },
-    );
-
-    return forecast ?? openMeteo.getForecast(location, days);
+    return openMeteo.getForecast(location, days);
   },
 
   async getWarnings(district: DistrictId): Promise<Warning[] | NoWarning | NoData> {

@@ -255,6 +255,16 @@ export const openMeteo: WeatherSource = {
             // Open-Meteo stamps when these values were last refreshed, not when
             // a bulletin was published. Saying "issued" would over-claim.
             timeBasis: 'updated',
+            /*
+             * A MODEL, and it says so. Open-Meteo's `current` block is a
+             * numerical weather model evaluated for this coordinate and this
+             * hour — not a thermometer at this spot. Describing it as an
+             * observation would be a lie of category, and the interface
+             * renders this word where it used to render an API path.
+             */
+            nature: 'model',
+            observedAt: null,
+            fetchedAt: new Date().toISOString(),
           },
         } satisfies Reading;
       },
@@ -321,6 +331,9 @@ export const openMeteo: WeatherSource = {
             endpoint: FORECAST_PATH,
             issuedAt: toIsoWithOffset(stamp, body.utc_offset_seconds ?? 0),
             timeBasis: 'updated',
+            nature: 'model',
+            observedAt: null,
+            fetchedAt: new Date().toISOString(),
           },
         } satisfies Forecast;
       },

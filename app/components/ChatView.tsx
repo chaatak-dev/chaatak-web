@@ -40,10 +40,14 @@ import {
   writeCache,
 } from '@/lib/offline/cache';
 import { canAskForLocation, currentPosition, geoSupported, type Coords } from '@/lib/geo';
+import {
+  isNearBottom,
+  preservedScrollTop,
+  shouldFollow,
+  showsJumpToLatest,
+} from '@/lib/chat/scroll';
 import { ChatTurn } from './ChatTurn';
 import { StaleBand } from './StaleBand';
-import { ThemeToggle } from './ThemeToggle';
-import { LanguagePanel } from './LanguagePanel';
 import { LogoMark } from './LogoMark';
 import { Mic } from './Mic';
 import { useApp } from './AppState';
@@ -100,6 +104,29 @@ export function ChatView() {
    */
   const [slowOpen, setSlowOpen] = useState(false);
 
+  /**
+   * Whether the reader is at the bottom and therefore following along.
+   *
+   * State rather than a ref because the jump-to-latest control renders from
+   * it. It changes ONLY when the reader scrolls — never when content
+   * arrives — which is what stops a new answer dragging somebody back down
+   * from the number they were re-reading.
+   */
+  const [pinned, setPinned] = useState(true);
+  /**
+   * Whether the jump-to-latest control is worth showing.
+   *
+   * State, not a value read from the ref at render time: a ref is not
+   * reactive, so a button derived from one appears and disappears a render
+   * late — or not at all. Recomputed wherever the geometry can have changed.
+   */
+  const [jumpVisible, setJumpVisible] = useState(false);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** The scroll height before the last render, for history prepends. */
+  const lastHeight = useRef(0);
+  /** The id at the top, which is how a prepend is told from an append. */
+  const firstId = useRef<string | null>(null);
   const sessionRef = useRef<{ stop(): void } | null>(null);
   const speakingRef = useRef<{ cancel(): void } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -137,9 +164,96 @@ export function ChatView() {
   const offline = useSyncExternalStore(subscribeOnline, isOffline, () => false);
   const cached = useSyncExternalStore(subscribeCache, readCache, () => null);
 
+  /*
+   * Follow the conversation, or leave the reader where they are.
+   *
+   * Runs after every change to the transcript. Three cases, and the middle
+   * one is the one people notice:
+   *
+   *   pinned          → move to the latest
+   *   scrolled up     → do nothing at all
+   *   grew at the top → hold the same line under the same pixel
+   */
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const metrics = {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+
+    /*
+     * A PREPEND is told from an append by what is at the top, not by the
+     * height changing — both change the height, and only one of them moves
+     * the content the reader is looking at. Correcting for an append scrolled
+     * them down by exactly the height of every new answer, which is the
+     * behaviour this whole module exists to prevent.
+     */
+    const topId = messages[0]?.id ?? null;
+    const prepended =
+      lastHeight.current > 0 &&
+      firstId.current !== null &&
+      topId !== firstId.current &&
+      messages.some((m) => m.id === firstId.current);
+
+    if (prepended) {
+      el.scrollTop = preservedScrollTop(lastHeight.current, el.scrollHeight, el.scrollTop);
+    } else if (shouldFollow(pinned, metrics)) {
+      el.scrollTop = el.scrollHeight;
+    }
+
+    firstId.current = topId;
+
+    lastHeight.current = el.scrollHeight;
+
+    // The transcript grew, so the geometry the control depends on changed
+    // even though nobody scrolled.
+    setJumpVisible(
+      showsJumpToLatest(pinned, {
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }),
+    );
+    // `pinned` is deliberately not a dependency: this reacts to the
+    // transcript changing, not to the reader scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, thinking]);
+
+  /**
+   * The reader's own scrolling is the only thing that changes who is in
+   * control.
+   */
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const metrics = {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+
+    const nowPinned = isNearBottom(metrics);
+    setPinned(nowPinned);
+    setJumpVisible(showsJumpToLatest(nowPinned, metrics));
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    /*
+     * Instant, not smooth. A smooth scroll fires a scroll event from every
+     * intermediate position, and the handler correctly read those as "the
+     * reader is not at the bottom" — so the control reappeared halfway
+     * through its own animation and the jump never completed.
+     */
+    el.scrollTop = el.scrollHeight;
+    setPinned(true);
+    setJumpVisible(false);
+  }, []);
 
   useEffect(() => {
     if (!app.loadingConversation) return;
@@ -320,6 +434,14 @@ export function ChatView() {
         }
 
         setStanding(reply.standing);
+
+        /*
+         * The rail follows the conversation, and shares its numbers.
+         *
+         * Adopted rather than re-fetched: this is the snapshot the answer was
+         * written from, so the rail cannot contradict the sentence above it.
+         */
+        if (reply.snapshot) app.adoptSnapshot(reply.snapshot, 'conversation');
 
         setMessages([
           ...history,
@@ -509,6 +631,8 @@ export function ChatView() {
         which is unusable the moment there is more than one exchange.
       */}
       <div
+        ref={scrollRef}
+        onScroll={onScroll}
         className={`chat__scroll${messages.length === 0 ? ' chat__scroll--empty' : ''}`}
         role="log"
         aria-live="polite"
@@ -629,20 +753,28 @@ export function ChatView() {
       </div>
 
       {/*
-        Rendered ONCE. Duplicating the controls into the masthead as well put
-        two controls for one setting on screen at every width, and two
-        elements sharing an id, which quietly broke the label association.
-        A strip above the conversation on narrow screens, a sticky column
-        beside it on wide ones — same markup, different placement.
+        Offered only when there is somewhere to go and the reader is not
+        already there. A button that does nothing is worse than no button,
+        which is why the condition is computed rather than assumed from
+        `pinned` alone.
       */}
-      <aside className="chat__rail">
-        <p className="chat__rail-heading">{t('settings.heading')}</p>
-        <LanguagePanel />
-        <p className="chat__rail-heading">{t('settings.theme')}</p>
-        <ThemeToggle />
-      </aside>
-
       <div className="composer">
+      {jumpVisible && (
+        <button type="button" className="chat__jump" onClick={jumpToLatest}>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M8 3v9M4.5 8.5L8 12l3.5-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {t('chat.jumpToLatest')}
+        </button>
+      )}
+
         <Mic
           state={shownMicState}
           lang={lang}

@@ -166,9 +166,20 @@ Practical consequences:
 
 ## Architecture
 
-**Data adapters.** All weather sources sit behind one interface. IMD is
-primary; Open-Meteo is the development fallback while IMD API access is
-pending. Swapping sources must never require touching application logic.
+**Data adapters.** All weather sources sit behind one interface. Swapping
+sources must never require touching application logic.
+
+**The division of labour between sources is the data's, not a preference. IMD
+is the authority on what is dangerous; Open-Meteo says what is happening this
+hour.** IMD's synoptic stations report three-hourly and the endpoint serves
+the last row whenever it is asked, so at six in the evening it returns the
+twelve o'clock observation — correctly, with an honest timestamp — and
+rendering it under "अभी" made every individual part true and the whole of it
+false. `WEATHER_SOURCE=imd` therefore means warnings from IMD and readings
+from Open-Meteo, each under its own name. The station transport is retained
+and exported as `stationObservation`, for a caller that wants an observation
+**as** an observation with its age attached. **Never let a stale observation
+stand in for the present.**
 
 The same pattern governs every external dependency — `WeatherSource`,
 `PlaceResolver`, `SpeechSource`, `LanguageModel`. One interface, several
@@ -192,13 +203,47 @@ interface WeatherSource {
 }
 ```
 
-Every return type carries `{ source, endpoint, issuedAt }`. Provenance is not
-optional metadata — it is part of the value.
+Every return type carries provenance, and provenance is not optional metadata
+— it is part of the value. It states `source`, `issuedAt` and **`nature`**:
+`observation`, `model` or `bulletin`. A reader not told which of the three
+they are looking at cannot judge the number, and the three age differently —
+`lib/weather/freshness.ts` keeps a threshold per nature and gives an unknown
+nature the strictest one.
+
+**Age is measured from `observedAt ?? issuedAt`, never from `fetchedAt`.**
+Fetch time is a property of the network; substituting it makes every stale
+value look a second old, which is exactly the failure the freshness check
+exists to catch. `endpoint` is kept for traceability and is **never
+rendered** — an API path tells a farmer nothing and tells everyone else our
+URL structure.
 
 **Caching.** Cache upstream responses server-side with per-endpoint TTL
 matched to how often that endpoint actually updates. Nowcast refreshes far
 more often than a 7-day forecast. IMD's own API guidelines ask for caching,
 and response latency is a scored evaluation criterion.
+
+**The weather surface adopts a snapshot; it does not re-fetch one.** The rail
+beside the conversation shows the same values the answer was written from. Two
+surfaces fetching independently will eventually disagree by a degree because
+they landed in different cache windows, and a reader cannot tell which to
+believe. One fetch, one snapshot, both surfaces. With no conversation location
+and no granted permission the rail states that it does not know, and offers;
+it never guesses a city.
+
+**The map draws only geometry that exists.** IMD publishes a hazard code per
+district id and no geometry of any kind, so the alerts layer renders districts
+and never a polygon we invented — a boundary that is nearly right tells
+somebody on the wrong side of it that they are safe. The base-map provider is
+abstracted from the weather layers and carries its attribution; sampling is
+capped per viewport rather than scaled with it.
+
+**Air quality is named for the scale it is on.** What is available today is
+modelled (Open-Meteo/CAMS) on the **European** breakpoints, and it is labelled
+modelled and European in the interface, not in a comment. India's official
+index is CPCB's, on different breakpoints and from physical stations; a
+model-derived European number presented as "AQI" is silently misread by anyone
+who knows the Indian scale. `AirQualitySource` is an interface so a station
+feed replaces it without touching a caller.
 
 **Intent routing. The LLM is the exception path, not the default.** We are on
 free tiers with no billing, so the pattern layer is load-bearing architecture
@@ -432,12 +477,17 @@ Open-Meteo has no warning product; IMD swaps in behind the same adapter.
 job twice sends it once, a withdrawn warning sends an all-clear and an
 expired one sends nothing. Done.
 
-### Phase 5 — IMD swap-in
-When the API key arrives: implement `WeatherSource` against IMD, build the
-location resolver (lat/lon → district Obj_id → nearest station) and the
-warning-code template catalogue. Change one config value to switch sources.
-**Done when:** the same UI shows IMD data with IMD provenance, and nothing
-above the adapter layer changed.
+### Phase 5 — IMD swap-in (warnings done)
+`WEATHER_SOURCE=imd` serves district warnings from IMD through the same
+`WeatherSource` interface, with the warning-code template catalogue and the
+lat/lon → district `Obj_id` resolver. Nothing above the adapter layer changed,
+which was the point of the interface. `npm run verify:imd` re-derives IMD's
+undocumented colour ordering against live data and fails if it stops holding.
+
+**Deliberately not done:** current conditions and the forecast stay on
+Open-Meteo, under Open-Meteo's name. See the division of labour above — the
+station endpoint cannot say what is happening now, so this is a data
+constraint rather than a config change waiting to be made.
 
 ### Phase 6 — Polish
 Dark mode. Offline behaviour — cache the last warning locally and show it
@@ -469,6 +519,10 @@ Kubernetes. None of them change whether a farmer gets a warning.
 - [ ] No weather value originates anywhere except a data adapter
 - [ ] Every displayed value shows source and issue time
 - [ ] `noData` renders as a statement, never as an estimate
+- [ ] A stale observation never renders as the present
+- [ ] Every value states its nature: observation, model or bulletin
+- [ ] The map draws no boundary IMD did not publish
+- [ ] A modelled European index is never called India's official AQI
 - [ ] Warning taxonomy renders from templates, never live MT
 - [ ] No API key in client code
 - [ ] Alerts deduplicate on `(userId, warningId)`

@@ -41,7 +41,6 @@ export function NoWarningField({
 
       <Provenance
         source={state.source}
-        endpoint={state.endpoint}
         timestamp={stamped ? (state.issuedAt as string) : state.checkedAt}
         basis={stamped ? state.timeBasis : 'checked'}
         timeZone={timeZone}

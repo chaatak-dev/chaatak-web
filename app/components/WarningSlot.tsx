@@ -96,7 +96,7 @@ function WarningBand({
 
       <Provenance
         source={top.provenance.source}
-        endpoint={top.provenance.endpoint}
+        nature={top.provenance.nature}
         timestamp={top.provenance.issuedAt}
         basis={top.provenance.timeBasis}
         timeZone={timeZone}

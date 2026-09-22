@@ -22,17 +22,53 @@
 export type TimeBasis = 'issued' | 'updated' | 'valid';
 
 /**
+ * What KIND of thing a number is.
+ *
+ * A model's output and a thermometer's reading are not the same claim, and
+ * presenting one as the other is a lie of category rather than of value. IMD's
+ * station rows are observations; Open-Meteo's `current` block is a model
+ * evaluated at this hour; a district warning is a bulletin somebody issued.
+ * The interface says which, because "31°C" means something different in each.
+ */
+export type ValueNature = 'observation' | 'model' | 'bulletin';
+
+/**
  * Provenance is part of the value, never optional metadata. Any type carrying
  * a number carries one of these alongside it.
+ *
+ * FOUR TIMES, deliberately kept apart. They answer different questions and
+ * collapsing them is how a six-hour-old observation ends up on screen under
+ * the word "now":
+ *
+ *   observedAt  when an instrument actually measured it
+ *   issuedAt    the meaningful upstream time — what `timeBasis` describes
+ *   fetchedAt   when WE asked, which says nothing about the value
+ *   modelRun    which run of a model produced it, where the provider says
+ *
+ * `fetchedAt` is never displayed as the value's time and never stands in for
+ * one. A value that is six hours old does not become current because we
+ * fetched it a second ago.
  */
 export type Provenance = {
   /** Human name of the source, as displayed. */
   source: string;
-  /** The endpoint actually called, so a displayed value can be traced back. */
+  /**
+   * The endpoint actually called. Kept for traceability and logs; NEVER
+   * rendered — a visitor cannot act on `/api/v1/current_wx`, and a provenance
+   * line that shows one is citing our plumbing rather than the source.
+   */
   endpoint: string;
   /** ISO 8601 with offset. Always from upstream — never `Date.now()`. */
   issuedAt: string;
   timeBasis: TimeBasis;
+  /** Observation, model output, or issued bulletin. Absent on older records. */
+  nature?: ValueNature;
+  /** When an instrument measured it, for sources that report one. */
+  observedAt?: string | null;
+  /** When we asked. Diagnostic only — never the value's time. */
+  fetchedAt?: string;
+  /** The model run this came from, where the provider names one. */
+  modelRun?: string | null;
 };
 
 /* ------------------------------------------------------------------ */

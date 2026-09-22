@@ -16,8 +16,10 @@
 
 import { GAZETTEER } from './gazetteer';
 import { findPlace } from './place-extract';
+import { LOCATION_FILLER, wantsCurrentLocation } from './location-intent';
 import type {
   CannotParse,
+  CurrentLocationQuery,
   Intent,
   ParseContext,
   ParseResult,
@@ -63,12 +65,17 @@ const VARIABLE_KEYWORDS: { words: string[]; variable: Variable }[] = [
 ];
 
 const WARNING_KEYWORDS = [
-  'चेतावनी', 'अलर्ट', 'खतरा', 'chetavni', 'chetawani', 'alert', 'warning', 'danger',
+  // Plurals are listed, not derived. Matching is whole-word — the boundary
+  // that stops "alert" matching inside "alerted" also stops it matching
+  // inside "alerts" — so "any warnings near me" was not recognised as a
+  // warning question at all and fell through to the model.
+  'चेतावनी', 'चेतावनियाँ', 'चेतावनियां', 'अलर्ट', 'खतरा',
+  'chetavni', 'chetawani', 'alert', 'alerts', 'warning', 'warnings', 'danger',
   // Named hazards. A question about a cyclone is a warning question, not a
   // wind forecast, and routing it to the wrong intent in a warning system is
   // the kind of miss this product exists to avoid.
-  'चक्रवात', 'तूफ़ान', 'तूफान', 'बाढ़', 'लू', 'chakravat', 'cyclone', 'storm',
-  'flood', 'heatwave', 'heat wave',
+  'चक्रवात', 'तूफ़ान', 'तूफान', 'बाढ़', 'लू', 'chakravat', 'cyclone', 'cyclones',
+  'storm', 'storms', 'flood', 'floods', 'heatwave', 'heatwaves', 'heat wave',
 ];
 
 /**
@@ -147,6 +154,15 @@ const ALL_KEYWORDS = [
   ...VARIABLE_KEYWORDS.flatMap((k) => k.words),
   ...WARNING_KEYWORDS,
   ...STOPWORDS,
+  /*
+   * The words a "where I am" question is made of.
+   *
+   * Masked so none of them can survive as the longest remaining run and be
+   * read as a name. "near me" put "near" immediately before the Hinglish
+   * locative "me", so the extractor claimed it, geocoded it, and answered
+   * about a place called Near.
+   */
+  ...LOCATION_FILLER,
 ];
 
 /**
@@ -204,6 +220,36 @@ export const patternParser: Parser = {
 
     const masked = blankContractions(blank(trimmed, ALL_KEYWORDS));
     const evidence = findPlace(trimmed, masked, masked !== trimmed, GAZETTEER);
+
+    /*
+     * "Where I am" beats both the leftovers and the conversation.
+     *
+     * Ahead of the `unsure` defer below, because a sentence that says "near
+     * me" has already named its place and there is nothing for the model to
+     * disambiguate — "weather where I am" leaves "where" standing, which
+     * would otherwise be deferred as a possible place name.
+     *
+     * Ahead of the standing place too: somebody who asked about Delhi and
+     * then asks what it is like near them is asking about near them, and
+     * inheriting Delhi would answer the wrong question confidently.
+     *
+     * It still has to be a weather question — `recognisedShape` — so a bare
+     * "where am I?" is not claimed by the weather parser.
+     */
+    if (recognisedShape && evidence.kind !== 'found' && wantsCurrentLocation(trimmed)) {
+      const window: TimeWindow = timeWindow ?? { kind: 'now' };
+      return {
+        kind: 'currentLocation',
+        intent: isWarning
+          ? 'warning'
+          : window.kind === 'now' || (window.kind === 'day' && window.offset === 0)
+            ? 'current'
+            : 'forecast',
+        timeWindow: window,
+        variable: variable ?? 'all',
+        servedBy: 'pattern',
+      } satisfies CurrentLocationQuery;
+    }
 
     // Something is standing in the sentence that may or may not be a place.
     // Guessing here is how "क्या आज घर से निकलूँ?" became a forecast for

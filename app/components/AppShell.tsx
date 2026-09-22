@@ -15,6 +15,7 @@
 import { useEffect } from 'react';
 import { ChatView } from './ChatView';
 import { Sidebar } from './Sidebar';
+import { WeatherRail } from './WeatherRail';
 import { useApp } from './AppState';
 
 export function AppShell() {
@@ -114,6 +115,21 @@ export function AppShell() {
         */}
         <ChatView key={app.viewKey} />
       </div>
+
+      {/*
+        The third column: what the weather is doing where the conversation is
+        about. Present only where there is room for it — below 1280 the
+        conversation is the whole point of the screen, and a weather panel
+        stacked above it would push the transcript off.
+
+        Rendered inside the shell rather than inside the chat column so it is
+        a sibling of the conversation, not a child of it: it survives a
+        conversation switch, and the column that scrolls stays the one that
+        should.
+      */}
+      <aside className="rail" aria-label={app.t('rail.title')}>
+        <WeatherRail />
+      </aside>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import type { ConversationId } from '@/lib/accounts/types';
 import { resolvePoint } from '@/lib/weather/point';
 import { readCoords } from '@/lib/chat/coords';
 import { readPreference } from '@/lib/i18n/preferences';
+import { wantsCurrentLocation } from '@/lib/parse/location-intent';
 import { ASK_FOR_LOCATION } from '@/lib/chat/scope';
 import { classify } from '@/lib/chat/classify';
 import { boundContext } from '@/lib/chat/context';
@@ -29,7 +30,7 @@ import { patternParser } from '@/lib/parse/patterns';
 import { writeReply } from '@/lib/render/reply';
 import type { InterfaceLang } from '@/lib/i18n/languages';
 import type { SpeechLang } from '@/lib/speech/types';
-import { OUTLOOK_DAYS } from '@/lib/weather/api';
+import { OUTLOOK_DAYS, type WeatherSnapshot } from '@/lib/weather/api';
 import { placeResolver, weatherSource } from '@/lib/weather/source';
 import { conditionFor } from '@/lib/weather/wmo';
 import { scriptOf } from '@/lib/weather/gazetteer/normalise';
@@ -77,6 +78,16 @@ export type ChatReply = {
   needsLocation?: true;
   /** The place was named by a coordinate, so the answer says which place. */
   usedDeviceLocation?: { name: string; district: string | null };
+  /**
+   * The weather this turn was answered from.
+   *
+   * Carried so the rail shows the SAME numbers the answer used rather than
+   * fetching its own — two independent fetches land in different cache
+   * windows and disagree by a degree at exactly the moment somebody notices.
+   * Not persisted with the message; the conversation stores the answer and
+   * its provenance, not a snapshot that will be wrong tomorrow.
+   */
+  snapshot?: WeatherSnapshot;
   /** Where this turn was saved. Absent for a guest. */
   conversationId?: string;
   /** The conversation's title, when this turn is the one that set it. */
@@ -152,7 +163,24 @@ export async function POST(request: Request): Promise<Response> {
     lastPlace: standing?.place ?? undefined,
   });
 
-  if (byPattern?.kind === 'query') {
+  /**
+   * True when the question asked about where the person IS.
+   *
+   * It overrides the standing place, which is the whole point of telling it
+   * apart from "no place mentioned": someone who asked about Delhi and then
+   * asks what it is like near them is asking about near them.
+   */
+  let wantsHere = false;
+
+  if (byPattern?.kind === 'currentLocation') {
+    // "weather near me". The place is named — it is here — so there is
+    // nothing to ask about and nothing to inherit.
+    wantsHere = true;
+    needsWeather = true;
+    intent = byPattern.intent;
+    timeWindow = byPattern.timeWindow;
+    variable = byPattern.variable;
+  } else if (byPattern?.kind === 'query') {
     place = byPattern.placeWasImplied ? (standing?.place ?? '') : byPattern.place;
     intent = byPattern.intent;
     timeWindow = byPattern.timeWindow;
@@ -186,6 +214,22 @@ export async function POST(request: Request): Promise<Response> {
       // Providers all out. Treat it as conversational and let the template
       // answer rather than refusing.
       needsWeather = false;
+    }
+
+    /*
+     * The same rule, applied to whatever the model returned.
+     *
+     * A classifier asked for a place will happily answer "near me", and one
+     * vocabulary check here is better than teaching it a second one. If the
+     * question says "here" and no real place came back, it is a
+     * current-location question whichever layer read it.
+     */
+    if (needsWeather && inScope && wantsCurrentLocation(question)) {
+      const namedSomewhere = Boolean(place) && !wantsCurrentLocation(place);
+      if (!namedSomewhere) {
+        wantsHere = true;
+        place = '';
+      }
     }
   }
 
@@ -277,6 +321,7 @@ export async function POST(request: Request): Promise<Response> {
   /* ---- fetch, when the answer needs values ------------------------ */
 
   let facts: FactsSnapshot | null = null;
+  let snapshot: WeatherSnapshot | undefined;
   let grounding: Grounding | undefined;
   let severity: Severity | 'unknown' = 'unknown';
   let nextStanding = standing;
@@ -296,7 +341,7 @@ export async function POST(request: Request): Promise<Response> {
    * interface can offer the prompt beside it.
    */
   const point = readCoords(body.coords);
-  const wantsPlace = needsWeather && !place && !standing?.place;
+  const wantsPlace = needsWeather && !place && (wantsHere || !standing?.place);
   let fromDevice: { name: string; district: string | null } | undefined;
 
   if (wantsPlace && point) {
@@ -464,6 +509,15 @@ export async function POST(request: Request): Promise<Response> {
       warnings: warningFacts(warnings, chrome),
     };
 
+    // The one canonical view of this location, handed to the rail as-is.
+    snapshot = {
+      place: resolved,
+      current,
+      outlook,
+      warnings,
+      fetchedAt: new Date().toISOString(),
+    };
+
     places.push(resolved.name);
     if (resolved.admin1) places.push(resolved.admin1);
     if (resolved.admin2) places.push(resolved.admin2);
@@ -480,7 +534,7 @@ export async function POST(request: Request): Promise<Response> {
       variable,
       setAt: new Date().toISOString(),
     };
-  } else if (standing?.place) {
+  } else if (standing?.place && !wantsHere) {
     // Ungrounded turn still carries the standing place, so the gate can tell
     // a legitimate reference from an invented one.
     places.push(standing.place);
@@ -527,6 +581,7 @@ export async function POST(request: Request): Promise<Response> {
     lang,
     grounding,
     standing: nextStanding,
+    snapshot,
     usedDeviceLocation: fromDevice,
     meta: {
       parseLayer,

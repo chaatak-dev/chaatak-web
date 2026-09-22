@@ -1334,142 +1334,18 @@ body:has(.chat) {
 }
 
 @media (min-width: 1280px) {
-  /* The conversation becomes two columns: a rail that holds what the masthead was
-     overcrowded with, and the conversation at its own measure.
-
-     Both carry the gutter as padding and both are widened by exactly that
-     much, so their CONTENT boxes are the same 62rem starting at the same x.
-     Matching only the max-width left the mark indented one gutter past the
-     conversation beneath it — the one width where the two-column grid makes
-     that edge the most visible thing on the page. */
+  /* The masthead and the conversation share a measure and a gutter, so the
+     mark sits directly above the text beneath it. Matching only the
+     max-width left the mark indented one gutter past the conversation. */
   .masthead__inner,
   .chat {
-    max-width: calc(62rem + 2 * var(--gutter));
+    max-width: calc(46rem + 2 * var(--gutter));
     padding-inline: var(--gutter);
   }
 
   .masthead__inner {
     gap: 16px;
     min-height: 72px;
-  }
-
-  .chat {
-    display: grid;
-    grid-template-columns: minmax(0, 34rem) minmax(13rem, 1fr);
-    grid-template-rows: 1fr auto;
-    column-gap: 40px;
-    align-items: start;
-  }
-
-  .chat__scroll {
-    grid-column: 1;
-    grid-row: 1;
-    padding-inline: 0;
-  }
-
-  .composer {
-    grid-column: 1;
-    grid-row: 2;
-    padding-inline: 0;
-  }
-
-  /* The rail: preferences, out of the way of the conversation but never
-     more than one glance from it. */
-  .chat__rail {
-    display: flex;
-    grid-column: 2;
-    grid-row: 1 / -1;
-    position: sticky;
-    top: 24px;
-    flex-direction: column;
-    gap: 20px;
-    padding-top: 26px;
-  }
-
-  .chat__rail .langpicker {
-    padding: 0;
-  }
-
-  .chat__rail .langpicker__label {
-    position: static;
-    width: auto;
-    height: auto;
-    clip-path: none;
-  }
-
-  .chat__rail .langpicker__control {
-    min-height: 46px;
-    padding: 0 12px;
-    gap: 8px;
-  }
-
-  .chat__rail .langpicker__value {
-    flex: 1;
-    max-width: none;
-    font-size: 15.5px;
-  }
-
-  .chat__rail .langnote {
-    margin: 0;
-  }
-
-  .chat__rail-heading {
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-  }
-}
-
-/* Below 1280 the rail is a strip above the conversation: the picker takes the
-   room, the theme buttons take what they need, and the note wraps beneath.
-
-   The breakpoint moved from 1024 once the sidebar arrived. At 1024 the shell
-   is already spending 268px on the sidebar, and a second column beside a
-   34rem conversation does not fit in what is left — it fits at 1280. */
-@media (max-width: 1279.98px) {
-  .chat__rail {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    padding: 12px var(--gutter);
-    border-bottom: 1px solid var(--hairline);
-  }
-
-  .chat__rail-heading {
-    display: none;
-  }
-
-  .chat__rail .langpicker {
-    flex: 1 1 12rem;
-    min-width: 0;
-    padding: 0;
-  }
-
-  .chat__rail .langpicker__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .chat__rail .langpicker__control {
-    min-height: 42px;
-  }
-
-  .chat__rail .themetoggle {
-    flex: 0 0 auto;
-  }
-
-  /* The note is a full-width line under the controls, never squeezed beside
-     them — it is a sentence, not a chip. */
-  .chat__rail .langnote {
-    flex: 1 1 100%;
-    margin: 0;
   }
 }
 
@@ -2843,39 +2719,792 @@ body:has(.chat) {
   line-height: var(--leading-deva);
 }
 
-/* Below the wide breakpoint the rail is a strip, and three stacked pickers
-   are too much of it. They sit side by side and wrap. */
-@media (max-width: 1279.98px) {
-  .chat__rail .langsettings {
-    flex: 1 1 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
 
-  .chat__rail .langpicker {
-    flex: 1 1 10rem;
-    min-width: 0;
-  }
 
-  /* The hints are for a settings column, not for a strip above a
-     conversation — the labels and the values say enough here. */
-  .chat__rail .langpicker__hint,
-  .chat__rail .langnote {
-    display: none;
-  }
+/* ------------------------------------------------------------------ */
+/* The three-column shell, and the one place that scrolls              */
+/*                                                                     */
+/* sidebar | conversation | weather rail                                */
+/*                                                                     */
+/* THE BUG THIS REPLACES. The conversation column was a grid with       */
+/* `align-items: start`, which tells every item to size to its content  */
+/* instead of filling its row. So the transcript grew to the height of  */
+/* the whole conversation, ran underneath the composer, and eventually  */
+/* pushed past the bottom of the viewport entirely. It was not a        */
+/* padding problem and no amount of padding would have fixed it.        */
+/*                                                                     */
+/* The shape that does work, and the two rules that make it work:       */
+/*                                                                     */
+/*   every ancestor of the scroller is a flex column with min-height:0  */
+/*   exactly one descendant has overflow-y: auto                        */
+/*                                                                     */
+/* `min-height: 0` is the whole trick. A flex item's default minimum is */
+/* its content, so without it an overflowing child makes its parent     */
+/* grow rather than scroll — which is precisely what happened.          */
+/* ------------------------------------------------------------------ */
 
-  .chat__rail-heading {
-    display: none;
-  }
+.shell__main {
+  /* Already a flex column; these are the two that matter. */
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* Rail headings get the same treatment as sidebar headings: caps are a Latin
-   device, and Devanagari set in "caps" with letter-spacing is just harder to
-   read at the size a section label wants to be. */
-:lang(hi) .chat__rail-heading {
+.chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* THE scroller. The only one in the conversation column. */
+.chat__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Momentum scrolling should not drag the page behind it on iOS. */
+  -webkit-overflow-scrolling: touch;
+  /*
+   * Scroll anchoring off, deliberately.
+   *
+   * Chrome and Firefox silently adjust scrollTop when content is inserted
+   * above the viewport, which is the same job the prepend correction in
+   * ChatView does — so with both running the view moved by exactly twice the
+   * inserted height. Safari implements none of it. Turning it off makes the
+   * behaviour ours, and identical in every browser.
+   */
+  overflow-anchor: none;
+}
+
+/* The composer stays in normal flow and keeps its own height. It used to be
+   `position: sticky`, which is a workaround for a column that scrolls when it
+   should not — with the transcript scrolling properly there is nothing to
+   stick to and nothing to overlap. */
+.composer {
+  position: static;
+  flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------------ */
+/* Jump to latest                                                      */
+/* ------------------------------------------------------------------ */
+
+.chat__jump {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 0 14px;
+  min-height: 36px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--ink) 14%, transparent);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.chat__jump svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+/* Anchored to the composer rather than to the viewport, so it sits above the
+   input at every width and moves with the keyboard. */
+.composer {
+  position: relative;
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings                                                            */
+/* ------------------------------------------------------------------ */
+
+.account__settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  font-size: 14px;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+}
+
+.account__settings svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.settings {
+  width: min(94vw, 30rem);
+  max-height: min(86dvh, 44rem);
+  padding: 0;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.settings::backdrop {
+  background: color-mix(in srgb, #000 52%, transparent);
+}
+
+.settings__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.settings__title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.settings__close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.settings__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.settings__body {
+  max-height: calc(min(86dvh, 44rem) - 64px);
+  padding: 4px 18px 18px;
+  overflow-y: auto;
+}
+
+.settings__section {
+  padding-top: 16px;
+}
+
+.settings__section + .settings__section {
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+}
+
+.settings__heading {
+  margin-bottom: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+:lang(hi) .settings__heading {
   font-size: 12.5px;
   letter-spacing: 0;
   text-transform: none;
   color: var(--text-soft);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* The weather rail                                                    */
+/*                                                                     */
+/* The third column. Present only where there is room: below 1280 the  */
+/* conversation is the whole point of the screen, and a weather panel  */
+/* stacked above it would push the transcript off.                     */
+/* ------------------------------------------------------------------ */
+
+.rail {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .rail {
+    display: block;
+    flex: 0 0 21rem;
+    min-height: 0;
+    padding: 18px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+.rail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rail__empty {
+  padding-top: 8px;
+}
+
+.rail__empty-headline {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+:lang(hi) .rail__empty-headline {
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.rail__empty-body {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+:lang(hi) .rail__empty-body {
+  line-height: var(--leading-deva);
+}
+
+.rail__locate,
+.rail__monitor {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.rail__monitor {
+  margin-top: 0;
+}
+
+.rail__monitor:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rail__monitored {
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sev-none-line);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.rail__monitor-note,
+.rail__note,
+.rail__stale {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+:lang(hi) .rail__monitor-note,
+:lang(hi) .rail__note,
+:lang(hi) .rail__stale {
+  line-height: var(--leading-deva);
+}
+
+/* A value too old to be called current says so, in the warning colour, at
+   the same weight as the number it qualifies. */
+.rail__stale {
+  padding: 8px 10px;
+  color: var(--sev-alert-ink);
+  background: var(--sev-alert);
+  border-radius: var(--radius);
+}
+
+.rail__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  margin: 0;
+}
+
+.rail__stat dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+:lang(hi) .rail__stat dt {
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.rail__stat dd {
+  margin: 2px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.rail__unit {
+  margin-left: 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* The metric switcher                                                 */
+/* ------------------------------------------------------------------ */
+
+.rail__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.rail__metric {
+  flex: 1 1 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rail__metric--on {
+  color: var(--text);
+  background: var(--paper);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Air quality                                                         */
+/* ------------------------------------------------------------------ */
+
+.rail__aqi-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rail__aqi-band {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.rail__aqi-value--good { color: var(--sev-none-line); }
+.rail__aqi-value--fair { color: var(--sev-none-line); }
+.rail__aqi-value--moderate { color: var(--sev-watch-line); }
+.rail__aqi-value--poor { color: var(--sev-alert-line); }
+.rail__aqi-value--veryPoor,
+.rail__aqi-value--severe { color: var(--sev-warning-line); }
+
+.rail__aqi-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.rail__aqi-parts span:first-child {
+  margin-right: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* The index and the fact that it is modelled are not fine print — they are
+   what stops a CPCB reader misreading a European number. */
+.rail__aqi-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  border-top: 2px solid var(--hairline);
+}
+
+/* ------------------------------------------------------------------ */
+/* The weather card                                                    */
+/*                                                                     */
+/* A quiet ground that answers to the sky it describes. Two colour     */
+/* stops and one hairline — no icon set, no illustration, no animation.*/
+/* Deliberately independent of the page theme: light/dark decides the  */
+/* page, this decides one card.                                         */
+/* ------------------------------------------------------------------ */
+
+.wcard {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 16px 16px;
+  border-radius: var(--radius-card);
+  color: var(--wcard-ink, #10202c);
+  background: linear-gradient(
+    160deg,
+    var(--wcard-from, #cfe0ea) 0%,
+    var(--wcard-to, #eef2f0) 100%
+  );
+}
+
+/* Time of day sets the ground; the condition adjusts it. Every value is a
+   muted, desaturated tone — this sits inches from a severity band and must
+   never compete with one. */
+.wcard--dawn  { --wcard-from: #e8d9cf; --wcard-to: #f3ece4; --wcard-ink: #2c2018; }
+.wcard--day   { --wcard-from: #cfe0ea; --wcard-to: #eef2f0; --wcard-ink: #10202c; }
+.wcard--dusk  { --wcard-from: #d7c9d2; --wcard-to: #ece5e2; --wcard-ink: #2a1f28; }
+.wcard--night { --wcard-from: #2b3440; --wcard-to: #3d4652; --wcard-ink: #eef2f5; }
+
+.wcard--cloud { --wcard-from: #d5dade; --wcard-to: #edeeef; }
+.wcard--wet   { --wcard-from: #c3d2dd; --wcard-to: #e3e9ec; }
+.wcard--storm { --wcard-from: #4a4f57; --wcard-to: #6a7078; --wcard-ink: #f2f3f4; }
+
+/* Night and storm both darken; together they should not go black. */
+.wcard--night.wcard--storm { --wcard-from: #23282f; --wcard-to: #363c44; }
+
+/* A stale value loses the ground entirely. Colour here means "this is what it
+   is like now", and that is exactly what a stale reading cannot claim. */
+.wcard--stale {
+  --wcard-from: var(--surface);
+  --wcard-to: var(--surface);
+  --wcard-ink: var(--text-soft);
+}
+
+.wcard__arc {
+  position: absolute;
+  inset: auto 0 0 0;
+  width: 100%;
+  height: 60%;
+  color: currentColor;
+  pointer-events: none;
+}
+
+.wcard__body {
+  position: relative;
+}
+
+.wcard__place {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.wcard__where {
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.72;
+}
+
+.wcard__temp {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: 14px;
+}
+
+.wcard__temp-value {
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.wcard__temp-unit {
+  font-size: 18px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.wcard__temp--absent {
+  font-size: 34px;
+  opacity: 0.5;
+}
+
+.wcard__condition {
+  margin-top: 4px;
+  font-size: 13.5px;
+  opacity: 0.85;
+}
+
+/* ------------------------------------------------------------------ */
+/* The map entry                                                       */
+/* ------------------------------------------------------------------ */
+
+.mapentry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mapentry:hover {
+  border-color: var(--border-control);
+}
+
+.mapentry__preview {
+  flex: none;
+  width: 72px;
+  height: 40px;
+  color: var(--text-soft);
+}
+
+.mapentry__ground {
+  fill: var(--paper);
+}
+
+.mapentry__pin {
+  fill: var(--accent);
+}
+
+.mapentry__label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* The map workspace                                                   */
+/* ------------------------------------------------------------------ */
+
+.wmap {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+
+.wmap__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.wmap__layers {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wmap__layers::-webkit-scrollbar {
+  display: none;
+}
+
+.wmap__layer {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wmap__layer--on {
+  color: var(--paper);
+  background: var(--accent);
+}
+
+.wmap__close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--text-soft);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.wmap__close svg {
+  width: 17px;
+  height: 17px;
+}
+
+.wmap__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * Specificity, deliberately raised.
+ *
+ * MapLibre adds `.maplibregl-map` to this element, and its own stylesheet
+ * sets `position: relative` on that class. Both selectors were one class, its
+ * sheet is imported later, so it won — `inset: 0` stopped applying, the
+ * container collapsed to zero height, and MapLibre fell back to its default
+ * 300px. Nothing errored: tiles loaded, the overlay painted at 839px, and
+ * every blob was projected through a 300px transform onto it. The weather was
+ * simply drawn in the wrong place.
+ *
+ * The explicit size is the belt to that braces: it holds even if the position
+ * ever loses again.
+ */
+.wmap .wmap__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ONE canvas for the whole layer. A marker per sample is what makes a
+   weather map stutter on a pan; the browser paints a few hundred gradients
+   into a bitmap without noticing. */
+.wmap__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.wmap__status {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.wmap__status--absent {
+  max-width: min(90vw, 30rem);
+  text-align: center;
+  border-radius: var(--radius);
+}
+
+.wmap__readout {
+  position: absolute;
+  bottom: 60px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.wmap__readout-value {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wmap__readout-unit {
+  margin-left: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.wmap__readout-where {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wmap__legend {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.wmap__legend-ramp {
+  width: min(42vw, 220px);
+  height: 8px;
+  border-radius: 4px;
+}
+
+.wmap__legend-end {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
 }

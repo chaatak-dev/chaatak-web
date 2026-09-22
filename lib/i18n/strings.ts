@@ -83,6 +83,7 @@ export const STRINGS = {
   'chat.using': { hi: '{place} की जानकारी', en: 'Using {place}' },
 
   'chat.useMyLocation': { hi: 'मेरी जगह इस्तेमाल करें', en: 'Use my location' },
+  'chat.jumpToLatest': { hi: 'नीचे जाएँ', en: 'Jump to latest' },
 
   'composer.placeholder': { hi: 'कुछ भी पूछें…', en: 'Ask anything…' },
   'composer.label': { hi: 'मौसम के बारे में पूछें', en: 'Ask about the weather' },
@@ -112,6 +113,75 @@ export const STRINGS = {
     hi: 'आप ऑफ़लाइन हैं। यह {age} की जानकारी है।',
     en: 'You are offline. This is from {age}.',
   },
+
+  /* ---- the weather rail -------------------------------------------- */
+  'rail.title': { hi: 'मौसम', en: 'Weather' },
+  'rail.emptyHeadline': { hi: 'अभी कोई जगह नहीं', en: 'No location yet' },
+  'rail.emptyBody': {
+    hi: 'किसी जगह के बारे में पूछें, या अपनी जगह इस्तेमाल करें।',
+    en: 'Ask about a place, or use your location.',
+  },
+  'rail.loading': { hi: 'मौसम आ रहा है…', en: 'Loading weather…' },
+  'rail.failed': {
+    hi: 'मौसम अभी नहीं मिल सका। थोड़ी देर बाद देखें।',
+    en: 'Weather could not be loaded. Try again shortly.',
+  },
+  'rail.feelsLike': { hi: 'महसूस', en: 'Feels like' },
+  'rail.high': { hi: 'अधिकतम', en: 'High' },
+  'rail.low': { hi: 'न्यूनतम', en: 'Low' },
+  'rail.humidity': { hi: 'नमी', en: 'Humidity' },
+  'rail.wind': { hi: 'हवा', en: 'Wind' },
+  'rail.precipitation': { hi: 'बारिश', en: 'Precipitation' },
+  'rail.temperature': { hi: 'तापमान', en: 'Temperature' },
+  'rail.aqi': { hi: 'हवा की गुणवत्ता', en: 'Air quality' },
+  'rail.monitor': { hi: '{place} की चेतावनी देखें', en: 'Monitor {place} alerts' },
+  'rail.monitored': { hi: '{place} निगरानी में है', en: '{place} is monitored' },
+  'rail.monitorHint': {
+    hi: 'IMD की आधिकारिक चेतावनियाँ, इस ज़िले के लिए।',
+    en: 'Official IMD warnings for this district.',
+  },
+  'rail.monitorSignIn': {
+    hi: 'जगह सहेजने के लिए साइन इन करें।',
+    en: 'Sign in to save places.',
+  },
+  'rail.unavailable': {
+    hi: 'इस समय का आँकड़ा उपलब्ध नहीं है।',
+    en: 'No current reading is available.',
+  },
+  'rail.staleNotice': {
+    hi: 'यह {age} पुराना आँकड़ा है, अभी का नहीं।',
+    en: 'This is from {age} ago, not right now.',
+  },
+  'rail.aqiModelled': {
+    hi: 'मॉडल से निकाला गया · यूरोपीय सूचकांक (CAMS)। यह CPCB का आधिकारिक AQI नहीं है।',
+    en: 'Modelled · European index (CAMS). Not the official CPCB AQI.',
+  },
+  'rail.aqiUnavailable': {
+    hi: 'हवा की गुणवत्ता उपलब्ध नहीं है।',
+    en: 'Air quality is not available.',
+  },
+  'rail.openMap': { hi: 'मौसम का नक्शा', en: 'Weather map' },
+
+  /* ---- the map ------------------------------------------------------ */
+  'map.cloud': { hi: 'बादल', en: 'Cloud' },
+  'map.uv': { hi: 'यूवी', en: 'UV' },
+  'map.pressure': { hi: 'दबाव', en: 'Pressure' },
+  'map.alerts': { hi: 'चेतावनी', en: 'Alerts' },
+  'map.noSource': {
+    hi: 'इस परत के लिए कोई भरोसेमंद स्रोत नहीं है, इसलिए कुछ नहीं दिखाया जा रहा।',
+    en: 'No authoritative source for this layer, so nothing is drawn.',
+  },
+
+  /* ---- provenance -------------------------------------------------- */
+  /* What KIND of value this is. It sits where an API path used to, because
+     a visitor can act on "model" and cannot act on /api/v1/current_wx. */
+  'provenance.issued': { hi: 'जारी', en: 'Issued' },
+  'provenance.updated': { hi: 'अपडेट', en: 'Updated' },
+  'provenance.valid': { hi: 'मान्य', en: 'Valid' },
+  'provenance.checked': { hi: 'जाँचा', en: 'Checked' },
+  'provenance.model': { hi: 'मॉडल', en: 'model' },
+  'provenance.observation': { hi: 'मापा गया', en: 'observed' },
+  'provenance.bulletin': { hi: 'बुलेटिन', en: 'bulletin' },
 
   /* ---- the microphone -------------------------------------------- */
   'mic.idle': { hi: 'बोलकर पूछें', en: 'Ask by voice' },
@@ -242,6 +312,8 @@ export const STRINGS = {
   'confirm.deleteAccount.confirm': { hi: 'खाता मिटाएँ', en: 'Delete account' },
 
   /* ---- settings ---------------------------------------------------- */
+  'settings.title': { hi: 'सेटिंग', en: 'Settings' },
+  'settings.open': { hi: 'सेटिंग खोलें', en: 'Settings' },
   'settings.heading': { hi: 'भाषा', en: 'Language' },
   'settings.auto': { hi: 'अपने आप (डिवाइस)', en: 'Auto (device)' },
   'settings.autoAssistant': { hi: 'अपने आप', en: 'Auto' },

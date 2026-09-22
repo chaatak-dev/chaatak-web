@@ -14,13 +14,41 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from './AppState';
 import { ConfirmDialog } from './ConfirmDialog';
+import { SettingsDialog } from './SettingsDialog';
 import { SignInButton } from './LocationsPanel';
 
 type Pending = null | 'signout' | 'delete-account' | 'delete-chats';
 
+/**
+ * The way into settings, for an account and for a guest alike.
+ *
+ * Reachable without signing in on purpose: the interface language is not an
+ * account feature, and somebody who has never signed in still needs to read
+ * the app in their own language.
+ */
+function SettingsButton({ onOpen }: { onOpen: () => void }) {
+  const { t } = useApp();
+  return (
+    <button type="button" className="account__settings" onClick={onOpen}>
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M8 1.6v1.7M8 12.7v1.7M14.4 8h-1.7M3.3 8H1.6M12.5 3.5l-1.2 1.2M4.7 11.3l-1.2 1.2M12.5 12.5l-1.2-1.2M4.7 4.7L3.5 3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
+      {t('settings.open')}
+    </button>
+  );
+}
+
 export function AccountMenu() {
   const app = useApp();
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
   const blockRef = useRef<HTMLDivElement>(null);
@@ -46,14 +74,25 @@ export function AccountMenu() {
   }, [open]);
 
   if (!app.configured) {
-    // Accounts are switched off on this deployment. Saying nothing is better
-    // than a sign-in button that cannot work.
-    return null;
+    /*
+     * Accounts are switched off on this deployment, so there is nothing to
+     * sign into — but the interface language is not an account feature, and
+     * hiding the whole block hid the only way to change it. The settings stay;
+     * the sign-in does not.
+     */
+    return (
+      <div className="account account--out">
+        <SettingsButton onOpen={() => setSettingsOpen(true)} />
+        <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      </div>
+    );
   }
 
   if (!app.user) {
     return (
       <div className="account account--out">
+        <SettingsButton onOpen={() => setSettingsOpen(true)} />
+        <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         <SignInButton />
         <p className="account__why">{app.t('account.why')}</p>
         {app.signInError && (
@@ -73,6 +112,18 @@ export function AccountMenu() {
     <div className="account" ref={blockRef}>
       {open && (
         <div className="account__menu" role="menu">
+          <button
+            type="button"
+            className="account__action"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setSettingsOpen(true);
+            }}
+          >
+            {app.t('settings.open')}
+          </button>
+
           <button
             type="button"
             className="account__action"
@@ -157,6 +208,8 @@ export function AccountMenu() {
           {error}
         </p>
       )}
+
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <ConfirmDialog
         open={pending === 'signout'}

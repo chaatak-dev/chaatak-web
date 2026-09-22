@@ -9,8 +9,18 @@
  * from the bottom of a block.
  */
 
-import type { TimeBasis } from '@/lib/weather/types';
+'use client';
+
+import type { TimeBasis, ValueNature } from '@/lib/weather/types';
 import { formatStamp } from '@/lib/format';
+import { useApp } from './AppState';
+import type { StringKey } from '@/lib/i18n/strings';
+
+const NATURE_KEY: Record<ValueNature, StringKey> = {
+  model: 'provenance.model',
+  observation: 'provenance.observation',
+  bulletin: 'provenance.bulletin',
+};
 
 /** `unknown` is for absence states, where no severity has been established. */
 export type ProvenanceSeverity =
@@ -46,11 +56,11 @@ const RULE_COLOUR: Record<ProvenanceSeverity, string> = {
  * Sources differ in what their timestamp means, so each says the true thing
  * rather than every value claiming to have been "issued".
  */
-const BASIS_WORD: Record<StampBasis, { hi: string; en: string }> = {
-  issued: { hi: 'जारी', en: 'Issued' },
-  updated: { hi: 'अपडेट', en: 'Updated' },
-  valid: { hi: 'मान्य', en: 'Valid' },
-  checked: { hi: 'जाँचा', en: 'Checked' },
+const BASIS_KEY: Record<StampBasis, StringKey> = {
+  issued: 'provenance.issued',
+  updated: 'provenance.updated',
+  valid: 'provenance.valid',
+  checked: 'provenance.checked',
 };
 
 function SourceMark() {
@@ -70,8 +80,16 @@ function SourceMark() {
 
 type Props = {
   source: string;
-  /** Empty when no endpoint was called, which is itself worth stating. */
-  endpoint: string;
+  /**
+   * What kind of value this is — a model's output, an instrument's reading,
+   * or an issued bulletin.
+   *
+   * This slot used to hold the API path. A visitor can act on "model"; nobody
+   * can act on `/api/v1/current_wx`, and citing our own plumbing in a
+   * provenance line is citing the wrong thing. The endpoint is still carried
+   * in the data for traceability — it is simply not what is shown.
+   */
+  nature?: ValueNature;
   /** ISO 8601. From upstream for a value; our own clock only for `checked`. */
   timestamp: string;
   basis: StampBasis;
@@ -82,20 +100,21 @@ type Props = {
 
 export function Provenance({
   source,
-  endpoint,
+  nature,
   timestamp,
   basis,
   timeZone,
   severity = 'none',
 }: Props) {
+  const { t } = useApp();
   const stamp = formatStamp(timestamp, timeZone);
-  const word = BASIS_WORD[basis];
+  const word = t(BASIS_KEY[basis]);
 
-  // A source with no such product was never called, so there is no endpoint to
-  // cite. The segment is dropped rather than filled with a placeholder.
-  const label = endpoint
-    ? `Source ${source}, endpoint ${endpoint}, ${word.en.toLowerCase()} ${stamp}`
-    : `Source ${source}, no endpoint called, ${word.en.toLowerCase()} ${stamp}`;
+  const natureWord = nature ? t(NATURE_KEY[nature]) : '';
+
+  const label = natureWord
+    ? `${source}, ${natureWord}, ${word} ${stamp}`
+    : `${source}, ${word} ${stamp}`;
 
   return (
     <p
@@ -106,14 +125,14 @@ export function Provenance({
       <SourceMark />
       <span aria-hidden="true" className="provenance__text">
         <span className="provenance__source">{source}</span>
-        {endpoint && (
+        {natureWord && (
           <>
             <span className="provenance__sep">·</span>
-            <span className="provenance__endpoint">{endpoint}</span>
+            <span className="provenance__endpoint">{natureWord}</span>
           </>
         )}
         <span className="provenance__sep">·</span>
-        <span lang="hi">{word.hi}</span> {stamp}
+        {word} {stamp}
       </span>
     </p>
   );
