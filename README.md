@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 535 tests, no network or database needed
+npm test        # 536 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Every third-party call goes

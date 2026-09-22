@@ -194,6 +194,22 @@ test('an English question is not mistaken for Hinglish', () => {
   }
 });
 
+test('a Hinglish marker inside an English word is not a marker', () => {
+  // Regression: the word boundary lost its escaping and matched substrings,
+  // so "remain" (mai), "chain" (hain) and "aura" (aur) read as Hinglish.
+  for (const q of [
+    'Will it remain cloudy in Delhi?',
+    'Is the mountain chain getting snow?',
+    'Is there an aura of haze over Kanpur?',
+  ]) {
+    const style = answerStyle(q, 'hi');
+    assert.equal(style.code, 'en', q);
+    assert.match(style.instruction, /English/, q);
+  }
+  // …while the whole words still count.
+  assert.match(answerStyle('kal barish hogi kya', 'en').instruction, /Hinglish/);
+});
+
 test('a Marathi speaker typing Devanagari is answered in Marathi, not Hindi', () => {
   assert.equal(answerStyle('पुण्यात उद्या पाऊस पडेल का?', 'mr').code, 'mr');
   assert.equal(answerStyle('बाराबंकी में कल बारिश होगी?', 'hi').code, 'hi');

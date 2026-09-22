@@ -283,7 +283,10 @@ const ROMANISED_HINDI = [
 
 /** Whole words only — the house rule for every lexical check in this codebase. */
 function hasWord(haystack: string, word: string): boolean {
-  return new RegExp(`(?<![\p{L}\p{M}])${word}(?![\p{L}\p{M}])`, 'u').test(haystack);
+  // `\\p`, not `\p`: inside a template literal `\p` is just "p", which turned
+  // the letter class into [p{L}p{M}] and the whole-word check into a
+  // substring one.
+  return new RegExp(`(?<![\\p{L}\\p{M}])${word}(?![\\p{L}\\p{M}])`, 'u').test(haystack);
 }
 
 function looksRomanisedHindi(text: string): boolean {
