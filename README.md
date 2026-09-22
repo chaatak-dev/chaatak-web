@@ -17,7 +17,7 @@ around are in [`CLAUDE.md`](./CLAUDE.md). This file covers running it.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test        # 421 tests, no network or database needed
+npm test        # 535 tests, no network or database needed
 ```
 
 `.env.local` holds every key and is gitignored. Every third-party call goes
@@ -37,7 +37,9 @@ key, which does carry authority, appears nowhere in this codebase.
 | `BHASHINI_INFERENCE_KEY` | Dhruva ASR and TTS |
 | `DATABASE_URL` | Supabase Postgres, **transaction pooler on 6543** |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push |
-| `TELEGRAM_BOT_TOKEN` | Telegram dispatch |
+| `TELEGRAM_BOT_TOKEN` | The Telegram bot, and Telegram alert delivery |
+| `TELEGRAM_WEBHOOK_SECRET` | Authenticates Telegram's webhook deliveries. Without it the webhook stays shut |
+| `CHAATAK_SITE_URL` | Optional. Where the bot's "Open Chaatak" links go; defaults to `https://chaatak.com` |
 | `CRON_SECRET` | Guards the alert daemon endpoint |
 | `WEATHER_SOURCE` | what visitors see. Real sources only — `open-meteo` |
 | `WARNING_SOURCE` | what the alert daemon polls. May be `fixture` |
@@ -140,6 +142,23 @@ granting location. If notifications are blocked, saved places still work.
 A coordinate is resolved to a canonical place through the existing gazetteer —
 not a second geocoder — and then discarded. What gets stored for a place saved
 from "use my location" is the town's coordinate, never the device's fix.
+
+---
+
+## Telegram
+
+[@ChaatakBot](https://t.me/ChaatakBot) is another client of the same backend:
+questions go through the same pipeline and gate, cards come from the same
+snapshot, saved places are the account's monitored locations, and IMD
+warnings arrive through the same alert daemon — Telegram is one more channel
+beside web push. Connecting an account is a one-time, ten-minute, single-use
+link from Settings, confirmed in Telegram. **Set-up, the security model and
+the one-time production steps are in [`docs/telegram.md`](./docs/telegram.md).**
+
+```bash
+npm run telegram:setup                     # read-only: webhook, profile, plan
+npm run telegram:setup -- --apply --photo  # register webhook, menu, profile
+```
 
 ---
 

@@ -18,11 +18,12 @@
  * non-200 is reserved for a malformed request.
  */
 
-import { OUTLOOK_DAYS, type WeatherResponse } from '@/lib/weather/api';
-import { placeResolver, weatherSource } from '@/lib/weather/source';
+import type { WeatherResponse } from '@/lib/weather/api';
+import { placeResolver } from '@/lib/weather/source';
 import { resolvePoint } from '@/lib/weather/point';
+import { snapshotFor } from '@/lib/weather/snapshot';
 import { readCoords } from '@/lib/chat/coords';
-import type { DistrictId, Location, NoData } from '@/lib/weather/types';
+import type { Location, NoData } from '@/lib/weather/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,14 +69,8 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(body, { headers: { 'cache-control': 'no-store' } });
   }
 
-  const source = weatherSource();
-  const district = (place.admin2 ?? place.name) as DistrictId;
-
-  const [current, outlook, warnings] = await Promise.all([
-    source.getCurrent(place),
-    source.getForecast(place, OUTLOOK_DAYS),
-    source.getWarnings(district),
-  ]);
+  // The same assembly the chat pipeline and the Telegram bot use.
+  const { current, outlook, warnings, fetchedAt } = await snapshotFor(place);
 
   const body: WeatherResponse = {
     kind: 'resolved',
@@ -87,7 +82,7 @@ export async function GET(request: Request): Promise<Response> {
   };
 
   return Response.json(
-    { ...body, fetchedAt: new Date().toISOString() },
+    { ...body, fetchedAt },
     { headers: { 'cache-control': 'no-store' } },
   );
 }

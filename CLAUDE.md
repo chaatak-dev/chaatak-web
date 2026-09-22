@@ -299,6 +299,15 @@ withdrawn, and dispatches an all-clear. One that vanishes **after** simply
 expired, and dispatches nothing — expiry is expected, and an all-clear for it
 is the kind of noise that trains people to ignore us.
 
+**Telegram is a client, not a second product.** The bot calls
+`answerQuestion` (lib/chat/answer.ts) — the same pipeline and gate the web
+route calls — and `snapshotFor` for cards; saves places through the account
+store; follows the account's language preferences (no Telegram language
+setting); and receives alerts as a channel of the existing daemon. A chat is
+linked to an account only by consuming a one-time link token that a signed-in
+session created. Details in [`docs/telegram.md`](./docs/telegram.md). Do not
+give it weather, place, alert or preference logic of its own.
+
 **Secrets stay server-side.** All third-party calls (IMD, Bhashini, LLM) go
 through Next.js API routes. No API key ever reaches the browser.
 

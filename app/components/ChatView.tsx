@@ -24,7 +24,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { ChatReply } from '../api/chat/route';
+import type { ChatReply } from '@/lib/chat/answer';
 import type { Message, StandingQuery } from '@/lib/chat/types';
 import type { MicState, SpeechLang } from '@/lib/speech/types';
 import { classifyFailure, failureText } from '@/lib/chat/failure';

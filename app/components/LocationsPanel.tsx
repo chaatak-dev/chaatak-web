@@ -270,7 +270,10 @@ export function SignInButton({ label }: { label?: string }) {
         onClick={() => {
           setBusy(true);
           setError(null);
-          void signInWithGoogle(window.location.pathname).then((result) => {
+          // The query comes along, so arriving from Telegram's "Connect"
+          // button (?connect=telegram) survives the round trip to Google.
+          // The callback accepts only a path on this site.
+          void signInWithGoogle(window.location.pathname + window.location.search).then((result) => {
             if (result.error) {
               setBusy(false);
               setError(result.error);

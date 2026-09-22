@@ -22,7 +22,7 @@ import {
 } from './channels/index';
 import { telegramSender } from './channels/telegram';
 import { webPushSender } from './channels/webpush';
-import { renderAlert } from './templates';
+import { renderAlert, type RenderedAlert } from './templates';
 import type {
   AlertPayload,
   AlertStore,
@@ -79,7 +79,7 @@ function payloadFor(decision: PollDecision): AlertPayload {
 async function deliver(
   sender: ChannelSender,
   channel: Channel,
-  alert: { title: string; body: string },
+  alert: RenderedAlert,
 ): Promise<{ outcome: DeliveryOutcome; attempts: number }> {
   let last: DeliveryOutcome = { kind: 'failed', reason: 'not attempted' };
 

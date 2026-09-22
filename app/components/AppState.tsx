@@ -187,6 +187,12 @@ export type AppState = {
   removeLocation: (id: string) => Promise<void>;
   enableAlerts: () => Promise<{ ok: boolean; reason?: string }>;
   disableAlerts: () => Promise<void>;
+  /**
+   * Adopt an alert status another control already fetched — connecting or
+   * disconnecting Telegram changes which channels exist, and the places panel
+   * should say so without a second request.
+   */
+  noteAlerts: (status: AlertStatus) => void;
 
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
@@ -742,11 +748,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (endpoint) {
       const status = await unregisterPush(endpoint);
       if (status) setAlerts(status);
-    } else {
-      setAlerts(NO_ALERTS);
     }
+    // No subscription on this device means nothing here to turn off — and it
+    // does not mean the account has no channel. Telegram may still be one, so
+    // the server is asked rather than the answer assumed.
     void refreshLocations();
   }, [refreshLocations]);
+
+  const noteAlerts = useCallback((status: AlertStatus) => {
+    setAlerts(status);
+    setLocations((current) => ({ ...current, alerts: status }));
+  }, []);
 
   /* ---- account ----------------------------------------------------- */
 
@@ -836,6 +848,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeLocation,
       enableAlerts,
       disableAlerts,
+      noteAlerts,
       signOut,
       deleteAccount,
     }),
@@ -874,6 +887,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeLocation,
       enableAlerts,
       disableAlerts,
+      noteAlerts,
       signOut,
       deleteAccount,
     ],

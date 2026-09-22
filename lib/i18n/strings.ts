@@ -352,6 +352,271 @@ export const STRINGS = {
   },
   'settings.theme': { hi: 'रंग-रूप', en: 'Appearance' },
 
+  'alerts.enableDevice': {
+    hi: 'इस डिवाइस पर भी सूचना दें',
+    en: 'Notify this device too',
+  },
+
+  /* ---- Telegram, in settings ---------------------------------------- */
+  'telegram.heading': { hi: 'टेलीग्राम', en: 'Telegram' },
+  'telegram.pitch': {
+    hi: 'अपनी सहेजी जगहों की IMD चेतावनियाँ टेलीग्राम में पाएँ, और वहीं मौसम भी पूछें।',
+    en: 'Get IMD warnings for your saved places in Telegram, and ask about the weather there too.',
+  },
+  'telegram.connect': { hi: 'टेलीग्राम जोड़ें', en: 'Connect Telegram' },
+  'telegram.preparing': { hi: 'लिंक बन रहा है…', en: 'Preparing a link…' },
+  'telegram.open': { hi: 'टेलीग्राम खोलें', en: 'Open Telegram' },
+  'telegram.waiting': {
+    hi: 'टेलीग्राम में Start दबाएँ, फिर “जोड़ें”। यह लिंक एक ही बार चलेगा और {minutes} मिनट में ख़त्म हो जाएगा।',
+    en: 'In Telegram, tap Start, then Connect. The link works once and expires in {minutes} minutes.',
+  },
+  'telegram.connected': { hi: 'जुड़ा हुआ', en: 'Connected' },
+  'telegram.notConnected': { hi: 'नहीं जुड़ा', en: 'Not connected' },
+  'telegram.connectedAs': { hi: '{name} के रूप में जुड़ा', en: 'Connected as {name}' },
+  'telegram.alertsOn': {
+    hi: 'आपकी सहेजी जगहों की चेतावनियाँ टेलीग्राम में आती हैं।',
+    en: 'Warnings for your saved places arrive in Telegram.',
+  },
+  'telegram.alertsPaused': {
+    hi: 'टेलीग्राम में चेतावनियाँ रुकी हैं। फिर शुरू करने के लिए बॉट को /alerts भेजें।',
+    en: 'Alerts are paused in Telegram. Send /alerts to the bot to resume them.',
+  },
+  'telegram.disconnect': { hi: 'टेलीग्राम अलग करें', en: 'Disconnect Telegram' },
+  'telegram.failed': { hi: 'लिंक नहीं बन सका। फिर कोशिश करें।', en: 'Could not make a link. Try again.' },
+  'telegram.expired': { hi: 'वह लिंक ख़त्म हो गया। नया बनाएँ।', en: 'That link expired. Make a new one.' },
+  'telegram.unavailable': {
+    hi: 'इस साइट पर टेलीग्राम अभी चालू नहीं है।',
+    en: 'Telegram is not set up on this deployment.',
+  },
+  'confirm.telegram.headline': { hi: 'टेलीग्राम अलग करें?', en: 'Disconnect Telegram?' },
+  'confirm.telegram.body': {
+    hi: 'टेलीग्राम में चेतावनियाँ आना बंद हो जाएँगी। आपकी सहेजी जगहें खाते में बनी रहेंगी।',
+    en: 'Warnings will stop arriving in Telegram. Your saved places stay on your account.',
+  },
+  'confirm.telegram.confirm': { hi: 'अलग करें', en: 'Disconnect' },
+
+  /*
+   * ---- The Telegram bot ----------------------------------------------
+   *
+   * The bot is the assistant in another window, so its words live here with
+   * everything else and follow the same rule: never machine-translated at
+   * runtime. Severity words are NOT here — they come from the alert catalogue
+   * in lib/alerts/templates.ts, exactly as every other alert's do.
+   *
+   * ⚠ Unlike the Hindi above, this section's Hindi is new with the bot, not
+   * moved from an earlier screen. Have a native speaker read it before it is
+   * relied on, as the rest of the catalogue was.
+   */
+  'tg.tagline': {
+    hi: 'IMD की आधिकारिक चेतावनियाँ और मौसम, आपकी भाषा में।',
+    en: 'Official IMD warnings and the weather, in your language.',
+  },
+  'tg.howToAsk': {
+    hi: 'वैसे ही पूछें जैसे किसी इंसान से पूछते हैं:',
+    en: 'Ask the way you would ask a person:',
+  },
+  'tg.examples': {
+    hi: 'गाज़ियाबाद का मौसम\nकल बाराबंकी में बारिश होगी?\nपटना में कोई चेतावनी है?',
+    en: 'weather in Ghaziabad\nwill it rain tomorrow in Barabanki?\nany warnings in Patna?',
+  },
+  'tg.tapHere': {
+    hi: 'या अपनी जगह का मौसम जानने के लिए नीचे “{button}” दबाएँ।',
+    en: 'Or tap “{button}” below for the weather where you are.',
+  },
+  'tg.connectInvite': {
+    hi: 'बिना पूछे चेतावनी चाहिए? अपना चातक खाता जोड़ें — तीन सहेजी जगहों तक की IMD चेतावनियाँ यहीं आएँगी।',
+    en: 'Want warnings before you have to ask? Connect your Chaatak account, and IMD warnings for up to three saved places arrive here.',
+  },
+  'tg.connectLink': { hi: 'chaatak.com पर खाता जोड़ें', en: 'Connect on chaatak.com' },
+  'tg.connectedNote': {
+    hi: 'आपका चातक खाता जुड़ा है। आपकी सहेजी जगहों की चेतावनियाँ यहीं आती हैं।',
+    en: 'Connected to your Chaatak account. Warnings for your saved places arrive here.',
+  },
+  'tg.connectedPausedNote': {
+    hi: 'आपका चातक खाता जुड़ा है। इस चैट में चेतावनियाँ रुकी हैं — फिर शुरू करने के लिए /alerts।',
+    en: 'Connected to your Chaatak account. Alerts are paused in this chat — /alerts to resume.',
+  },
+
+  'tg.kb.here': { hi: '📍 यहाँ का मौसम', en: '📍 Weather here' },
+  'tg.kb.places': { hi: '🔔 मेरी जगहें', en: '🔔 My places' },
+  'tg.kb.placeholder': { hi: 'मौसम के बारे में पूछें…', en: 'Ask about the weather…' },
+
+  'tg.cmd.weather': { hi: 'किसी जगह का मौसम', en: 'Weather for a place' },
+  'tg.cmd.locations': { hi: 'आपकी सहेजी जगहें', en: 'Your saved places' },
+  'tg.cmd.alerts': { hi: 'IMD चेतावनी सूचनाएँ', en: 'IMD warning alerts' },
+  'tg.cmd.settings': { hi: 'खाता और जवाब की भाषा', en: 'Account and reply language' },
+  'tg.cmd.help': { hi: 'कैसे पूछें', en: 'How to ask' },
+
+  'tg.profile.short': {
+    hi: 'भारत के लिए IMD की आधिकारिक मौसम चेतावनियाँ, आपकी भाषा में। किसी भी जगह का मौसम पूछें।',
+    en: 'Official IMD weather warnings for India, in your language. Ask about any place.',
+  },
+  'tg.profile.description': {
+    hi:
+      'चातक भारत मौसम विज्ञान विभाग (IMD) की आधिकारिक चेतावनियाँ और मौसम आप तक आपकी भाषा में पहुँचाता है।\n\n' +
+      '• भारत की किसी भी जगह का मौसम पूछें — “गाज़ियाबाद का मौसम”, “कल बारिश होगी?”\n' +
+      '• अपनी जगह का मौसम जानने के लिए 📍 दबाएँ\n' +
+      '• अपना चातक खाता जोड़ें और तीन जगहों तक की IMD चेतावनियाँ बिना पूछे पाएँ\n\n' +
+      'हर आँकड़े के साथ उसका स्रोत और समय रहता है। चेतावनियाँ सिर्फ़ IMD से आती हैं।',
+    en:
+      'Chaatak brings the India Meteorological Department’s official warnings and the weather to you, in your language.\n\n' +
+      '• Ask about any place in India — “weather in Ghaziabad”, “kal barish hogi?”\n' +
+      '• Tap 📍 for the weather where you are\n' +
+      '• Connect your Chaatak account to get IMD warnings for up to three places, before you ask\n\n' +
+      'Every number shows its source and time. Warnings come only from IMD.',
+  },
+
+  'tg.help.sources': {
+    hi: 'अभी का मौसम और पूर्वानुमान Open-Meteo नाम के मौसम मॉडल से आते हैं। चेतावनियाँ सिर्फ़ भारत मौसम विज्ञान विभाग (IMD) से आती हैं। हर आँकड़े के साथ उसका स्रोत और समय रहता है।',
+    en: 'Current conditions and forecasts come from Open-Meteo, a weather model. Warnings come only from the India Meteorological Department. Every number shows its source and time.',
+  },
+  'tg.unknownCommand': { hi: 'यह कमांड मुझे नहीं पता।', en: 'I don’t know that command.' },
+  'tg.unsupported': {
+    hi: 'मैं लिखे हुए सवाल और भेजी गई जगह समझ सकता हूँ। सवाल लिखें, या अपनी जगह भेजने के लिए नीचे 📍 दबाएँ।',
+    en: 'I can read typed questions and shared locations. Type your question, or tap 📍 below to share where you are.',
+  },
+  'tg.slowDown': {
+    hi: 'एक साथ बहुत सारे संदेश आ गए। थोड़ा रुककर फिर पूछें।',
+    en: 'That is a lot of messages at once. Wait a moment, then ask again.',
+  },
+  'tg.whichPlace': {
+    hi: 'कौन सी जगह? उसका नाम लिखें, या नीचे 📍 दबाएँ।',
+    en: 'Which place? Type its name, or tap 📍 below.',
+  },
+  'tg.orSaved': { hi: 'या अपनी कोई जगह चुनें:', en: 'Or pick one of your places:' },
+  'tg.expired': { hi: 'यह बटन पुराना हो गया। फिर से पूछें।', en: 'That button has expired. Ask again.' },
+
+  'tg.now': { hi: 'अभी', en: 'Now' },
+  'tg.outlook': { hi: 'अगले तीन दिन', en: 'Next three days' },
+  'tg.noWarning': { hi: 'IMD की कोई चेतावनी लागू नहीं', en: 'No IMD warning in force' },
+  'tg.district': { hi: 'ज़िला {district}', en: '{district} district' },
+  'tg.moreWarnings': { hi: 'कुल {count} चेतावनियाँ लागू', en: '{count} warnings in force' },
+
+  'tg.btn.forecast': { hi: '📅 तीन दिन का पूर्वानुमान', en: '📅 Three-day forecast' },
+  'tg.btn.refresh': { hi: '↻ ताज़ा करें', en: '↻ Refresh' },
+  'tg.btn.open': { hi: 'चातक खोलें', en: 'Open Chaatak' },
+  'tg.btn.details': { hi: 'मौसम और पूर्वानुमान', en: 'Weather and forecast' },
+  'tg.btn.watch': { hi: '🔔 {place} की चेतावनी पाएँ', en: '🔔 Get alerts for {place}' },
+  'tg.btn.watching': { hi: '✓ {place} निगरानी में', en: '✓ Watching {place}' },
+
+  'tg.watch.added': {
+    hi: '{place} अब निगरानी में है। इस ज़िले की IMD चेतावनियाँ यहाँ आएँगी।',
+    en: 'Watching {place}. IMD warnings for this district will arrive here.',
+  },
+  'tg.watch.addedPaused': {
+    hi: '{place} सहेज ली गई। इस चैट में चेतावनियाँ रुकी हैं — फिर शुरू करने के लिए /alerts।',
+    en: 'Saved {place}. Alerts are paused in this chat — /alerts to resume.',
+  },
+  'tg.watch.needsAccount': {
+    hi: 'सहेजी जगहों की चेतावनी के लिए चातक खाता चाहिए। खाता जोड़ें, तो तीन जगहों तक की चेतावनियाँ यहीं आएँगी।',
+    en: 'Alerts for saved places need a Chaatak account. Connect yours, and warnings for up to three places arrive here.',
+  },
+
+  'tg.link.confirm': {
+    hi: 'क्या इस टेलीग्राम को चातक खाते {account} से जोड़ें?',
+    en: 'Connect this Telegram to the Chaatak account {account}?',
+  },
+  'tg.link.confirmBody': {
+    hi: 'उस खाते की सहेजी जगहों की IMD चेतावनियाँ इस चैट में आएँगी। आप कभी भी इसे अलग कर सकते हैं।',
+    en: 'IMD warnings for that account’s saved places will arrive in this chat. You can disconnect at any time.',
+  },
+  'tg.link.connect': { hi: 'जोड़ें', en: 'Connect' },
+  'tg.link.done': {
+    hi: 'जुड़ गया। आपकी सहेजी जगहों की IMD चेतावनियाँ अब यहाँ आएँगी।',
+    en: 'Connected. IMD warnings for your saved places will arrive here.',
+  },
+  'tg.link.doneEmpty': {
+    hi: 'जुड़ गया। अभी कोई जगह सहेजी नहीं है — किसी जगह का मौसम पूछें, फिर 🔔 दबाकर उसकी चेतावनी पाएँ।',
+    en: 'Connected. No places are saved yet — ask about a place, then tap 🔔 to get its alerts.',
+  },
+  'tg.link.expired': {
+    hi: 'यह लिंक पुराना हो गया है या पहले ही इस्तेमाल हो चुका है। चातक की सेटिंग में नया लिंक बनाएँ।',
+    en: 'This link has expired or has already been used. Make a new one in Chaatak settings.',
+  },
+  'tg.link.otherAccount': {
+    hi: 'यह टेलीग्राम किसी दूसरे चातक खाते से जुड़ा है। पहले /settings में उसे अलग करें।',
+    en: 'This Telegram is connected to a different Chaatak account. Disconnect it in /settings first.',
+  },
+  'tg.link.already': {
+    hi: 'यह टेलीग्राम पहले से उसी खाते से जुड़ा है।',
+    en: 'This Telegram is already connected to that account.',
+  },
+  'tg.link.cancelled': { hi: 'नहीं जोड़ा गया। कुछ नहीं बदला।', en: 'Not connected. Nothing was changed.' },
+  'tg.link.moved': {
+    hi: 'यह टेलीग्राम अलग कर दिया गया — आपका चातक खाता किसी दूसरे टेलीग्राम से जोड़ा गया है। अगर यह आपने नहीं किया, तो chaatak.com पर साइन इन करके सेटिंग देखें।',
+    en: 'This Telegram has been disconnected: your Chaatak account was connected to another Telegram. If that was not you, sign in on chaatak.com and check Settings.',
+  },
+  'tg.link.failed': {
+    hi: 'अभी जोड़ा नहीं जा सका। लिंक फिर से आज़माएँ।',
+    en: 'Could not connect just now. Try the link again.',
+  },
+
+  'tg.unlink.button': { hi: 'खाता अलग करें', en: 'Disconnect account' },
+  'tg.unlink.confirm': {
+    hi: 'इस टेलीग्राम को अपने चातक खाते से अलग करें? यहाँ चेतावनियाँ आना बंद हो जाएँगी। आपकी सहेजी जगहें खाते में बनी रहेंगी।',
+    en: 'Disconnect this Telegram from your Chaatak account? Warnings will stop arriving here. Your saved places stay on the account.',
+  },
+  'tg.unlink.done': {
+    hi: 'अलग कर दिया। इस चैट में अब चेतावनियाँ नहीं आएँगी। मौसम आप अब भी पूछ सकते हैं।',
+    en: 'Disconnected. This chat no longer receives alerts. You can still ask about the weather.',
+  },
+  'tg.unlink.fromWeb': {
+    hi: 'chaatak.com पर इस टेलीग्राम को आपके चातक खाते से अलग कर दिया गया। अब यहाँ चेतावनियाँ नहीं आएँगी।',
+    en: 'This Telegram was disconnected from your Chaatak account on chaatak.com. Warnings will no longer arrive here.',
+  },
+  'tg.back': { hi: '‹ वापस', en: '‹ Back' },
+
+  'tg.places.title': { hi: 'आपकी जगहें', en: 'Your places' },
+  'tg.places.empty': {
+    hi: 'अभी कोई जगह सहेजी नहीं है। किसी जगह का मौसम पूछें, फिर 🔔 दबाकर उसकी चेतावनी पाएँ।',
+    en: 'No places saved yet. Ask about a place, then tap 🔔 to get its alerts.',
+  },
+  'tg.places.hint': { hi: 'मौसम देखने के लिए जगह दबाएँ।', en: 'Tap a place for its weather.' },
+  'tg.places.guest': {
+    hi: 'सहेजी जगहें चातक खाते में रहती हैं। अपना खाता जोड़ें — तीन जगहों तक पर नज़र रखें और उनकी IMD चेतावनियाँ यहीं पाएँ।',
+    en: 'Saved places belong to a Chaatak account. Connect yours to watch up to three places and get their IMD warnings here.',
+  },
+  'tg.places.remove': { hi: 'हटाएँ', en: 'Remove' },
+  'tg.places.removed': { hi: '{place} की निगरानी बंद।', en: 'Stopped watching {place}.' },
+
+  'tg.alerts.on': { hi: 'इस चैट में {places} के लिए चालू।', en: 'On in this chat for {places}.' },
+  'tg.alerts.onEmpty': {
+    hi: 'इस चैट में चालू है, पर अभी कोई जगह सहेजी नहीं है। किसी जगह का मौसम पूछें, फिर 🔔 दबाकर उसकी चेतावनी पाएँ।',
+    en: 'On in this chat, but no places are saved yet. Ask about a place, then tap 🔔 to get its alerts.',
+  },
+  'tg.alerts.paused': {
+    hi: 'इस चैट में रुकी हुई हैं। आपकी सहेजी जगहें वैसी ही हैं।',
+    en: 'Paused in this chat. Your saved places are unchanged.',
+  },
+  'tg.alerts.what': {
+    hi: 'सिर्फ़ IMD की आधिकारिक ज़िला चेतावनियाँ — कभी किसी मॉडल का अनुमान नहीं। चेतावनी जारी होने या बदलने पर एक संदेश, और जल्दी हटने पर एक संदेश।',
+    en: 'Only official IMD district warnings — never a model’s guess. One message when a warning is issued or changes, and one if it is lifted early.',
+  },
+  'tg.alerts.guest': {
+    hi: 'अपना चातक खाता जोड़ें और तीन सहेजी जगहों तक की IMD चेतावनियाँ यहीं पाएँ — बिना पूछे।',
+    en: 'Connect your Chaatak account to get IMD warnings here for up to three saved places — before you have to ask.',
+  },
+  'tg.alerts.pause': { hi: 'यहाँ चेतावनी रोकें', en: 'Pause alerts here' },
+  'tg.alerts.resume': { hi: 'यहाँ चेतावनी फिर शुरू करें', en: 'Resume alerts here' },
+  'tg.alerts.pausedToast': { hi: 'इस चैट में चेतावनियाँ रोक दी गईं।', en: 'Alerts paused in this chat.' },
+  'tg.alerts.resumedToast': { hi: 'इस चैट में चेतावनियाँ चालू।', en: 'Alerts on in this chat.' },
+
+  'tg.settings.account': { hi: 'खाता: {account}', en: 'Account: {account}' },
+  'tg.settings.noAccount': { hi: 'किसी चातक खाते से नहीं जुड़ा।', en: 'Not connected to a Chaatak account.' },
+  'tg.settings.language': { hi: 'जवाब की भाषा: {language}', en: 'Reply language: {language}' },
+  'tg.settings.languageGuest': {
+    hi: 'मैं उसी भाषा में जवाब देता हूँ जिसमें आप लिखते हैं। कोई भाषा चुनने के लिए खाता जोड़ें — फिर वह यहाँ और chaatak.com दोनों पर लागू होगी।',
+    en: 'I reply in the language you write in. Connect your account to choose one; it then applies here and on chaatak.com.',
+  },
+  'tg.settings.languageShared': {
+    hi: 'यह वही सेटिंग है जो chaatak.com पर है।',
+    en: 'The same setting as on chaatak.com.',
+  },
+  'tg.settings.saved': { hi: 'सहेज लिया। यह chaatak.com पर भी लागू होगा।', en: 'Saved. It applies on chaatak.com too.' },
+
+  'tg.alert.official': { hi: 'IMD की आधिकारिक चेतावनी', en: 'Official IMD warning' },
+  'tg.alert.until': { hi: '{time} तक', en: 'until {time}' },
+
   /* ---- errors ------------------------------------------------------ */
   'error.generic': { hi: 'कुछ गड़बड़ हुई। फिर कोशिश करें।', en: 'Something went wrong. Try again.' },
 } as const satisfies Record<string, Entry>;

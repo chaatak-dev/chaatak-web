@@ -34,6 +34,13 @@ export function AlertsControl() {
 
   const blocked = app.pushPermission === 'denied';
   const unsupported = app.pushPermission === 'unsupported' || !app.pushAvailable;
+  /*
+   * The button is about browser push; the status line is about the account.
+   * They used to be one condition, which was true while push was the only
+   * channel — with Telegram connected, "alerts on" offered "turn off on this
+   * device" to a device that had nothing to turn off.
+   */
+  const pushOn = app.alerts.channels.webpush > 0;
 
   async function enable() {
     setBusy(true);
@@ -63,7 +70,7 @@ export function AlertsControl() {
         </span>
       </p>
 
-      {app.alerts.enabled ? (
+      {pushOn ? (
         <button
           type="button"
           className="alertctl__button"
@@ -82,7 +89,13 @@ export function AlertsControl() {
           onClick={() => void enable()}
           disabled={busy}
         >
-          {app.t(busy ? 'alerts.enabling' : 'alerts.enable')}
+          {app.t(
+            busy
+              ? 'alerts.enabling'
+              : app.alerts.enabled
+                ? 'alerts.enableDevice'
+                : 'alerts.enable',
+          )}
         </button>
       )}
 

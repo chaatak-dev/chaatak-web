@@ -243,7 +243,16 @@ try {
 
   console.log('\nthe alert tables are closed to the browser entirely');
 
-  for (const table of ['subscribers', 'dispatch_claims', 'seen_warnings', 'dispatch_log']) {
+  for (const table of [
+    'subscribers',
+    'dispatch_claims',
+    'seen_warnings',
+    'dispatch_log',
+    // Telegram links, link tokens and update ids: server-side only.
+    'telegram_chats',
+    'telegram_link_tokens',
+    'telegram_updates',
+  ]) {
     const anon = await asAnon(`select * from ${table}`);
     assert(
       (anon.ok && anon.rows.length === 0) || (!anon.ok && anon.code === '42501'),

@@ -1,23 +1,35 @@
 /**
- * Telegram Bot API.
+ * Telegram Bot API, as an alert channel.
  *
- * 403 means the user blocked the bot, which is a decision rather than a fault
- * — the chat is removed and never retried. 429 carries `retry_after` and is
- * honoured rather than guessed at, because guessing is how a bot gets its
- * rate limit tightened.
+ * The message is laid out by lib/telegram/render.ts from the alert
+ * catalogue's parts — the same words the push notification carries, with the
+ * severity first and "Official IMD warning" beside it, and two buttons: the
+ * district's weather, and Chaatak itself.
+ *
+ * What each failure means is decided in lib/telegram/api.ts, shared with the
+ * bot so there is one reading of Telegram's errors:
+ *
+ *   403, or 400 "chat not found"   the person blocked the bot or left — gone
+ *   429                            flood control; its retry_after is honoured
+ *   5xx, or nothing came back      worth another attempt
+ *   any other 400                  our message is wrong — failed, NOT gone
+ *
+ * That last line is a fix. This sender used to treat every 400 as a dead
+ * chat, so a message Telegram merely refused to parse would have removed the
+ * channel and silenced every warning after it.
  */
 
+import { callTelegram, chatIsGone, telegramConfigured, transient } from '../../telegram/api';
+import { alertMessage } from '../../telegram/render';
 import type { Channel } from '../types';
 import type { RenderedAlert } from '../templates';
 import type { ChannelSender, DeliveryOutcome } from './index';
-
-const TIMEOUT_MS = 10_000;
 
 export const telegramSender: ChannelSender = {
   kind: 'telegram',
 
   configured() {
-    return Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    return telegramConfigured();
   },
 
   async send(channel: Channel, alert: RenderedAlert): Promise<DeliveryOutcome> {
@@ -25,54 +37,32 @@ export const telegramSender: ChannelSender = {
       return { kind: 'failed', reason: 'wrong channel kind' };
     }
 
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) return { kind: 'failed', reason: 'TELEGRAM_BOT_TOKEN not set' };
+    const message = alertMessage(alert);
 
-    let res: Response;
-    try {
-      res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: channel.chatId,
-          text: `*${alert.title}*\n${alert.body}`,
-          parse_mode: 'Markdown',
-          disable_notification: false,
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        cache: 'no-store',
-      });
-    } catch (error) {
+    // No retries here: the dispatcher owns the retry policy, and two stacked
+    // policies multiply rather than add.
+    const result = await callTelegram('sendMessage', {
+      chat_id: channel.chatId,
+      text: message.html,
+      parse_mode: 'HTML',
+      reply_markup: message.markup,
+      link_preview_options: { is_disabled: true },
+      disable_notification: message.silent === true,
+    });
+
+    if (result.ok) return { kind: 'sent' };
+
+    if (chatIsGone(result)) return { kind: 'gone', reason: result.description };
+
+    if (transient(result)) {
       return {
         kind: 'retry',
-        reason: error instanceof Error ? error.name : 'network',
-      };
-    }
-
-    if (res.ok) return { kind: 'sent' };
-
-    let body: { description?: string; parameters?: { retry_after?: number } } = {};
-    try {
-      body = (await res.json()) as typeof body;
-    } catch {
-      /* the status alone is enough to decide */
-    }
-
-    // Blocked by the user, or the chat is gone. Not a fault to retry.
-    if (res.status === 403 || res.status === 400) {
-      return { kind: 'gone', reason: body.description ?? `HTTP ${res.status}` };
-    }
-    if (res.status === 429) {
-      return {
-        kind: 'retry',
-        reason: 'rate limited',
+        reason: result.status === 429 ? 'rate limited' : result.description,
         // Telegram says exactly how long to wait; ignoring it makes things worse.
-        afterMs: (body.parameters?.retry_after ?? 1) * 1000,
+        ...(result.retryAfter !== undefined ? { afterMs: result.retryAfter * 1000 } : {}),
       };
     }
-    if (res.status >= 500) {
-      return { kind: 'retry', reason: `HTTP ${res.status}` };
-    }
-    return { kind: 'failed', reason: body.description ?? `HTTP ${res.status}` };
+
+    return { kind: 'failed', reason: result.description };
   },
 };

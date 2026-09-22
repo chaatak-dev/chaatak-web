@@ -30,6 +30,8 @@ const { db, closeDb } = await import('../lib/db/pool.js');
 const store = await import('../lib/accounts/store.js');
 const { conversationTitle } = await import('../lib/accounts/title.js');
 const { resolvePoint } = await import('../lib/weather/point.js');
+const { postgresTelegramStore: telegram } = await import('../lib/telegram/store.js');
+const { hashLinkToken, newLinkToken, LINK_TTL_MS } = await import('../lib/telegram/link.js');
 import type { ConversationId } from '../lib/accounts/types.js';
 import type { Location } from '../lib/weather/types.js';
 
@@ -49,6 +51,16 @@ function assert(condition: unknown, label: string, detail?: string): void {
 
 const userId = randomUUID();
 const email = `account-check-${userId.slice(0, 8)}@example.invalid`;
+
+/*
+ * Telegram ids for this run: a second throwaway account, two chats and an
+ * update id, all far outside any range a real chat or update would use, and
+ * all removed in the finally block.
+ */
+const otherUserId = randomUUID();
+const chatA = 9_100_000_000_000 + Math.floor(Math.random() * 1_000_000);
+const chatB = chatA + 1;
+const updateId = 9_100_000_000_000 + Math.floor(Math.random() * 1_000_000);
 
 function place(name: string, district: string, state: string): Location {
   return {
@@ -391,6 +403,170 @@ try {
     }
   }
 
+  /* ---- telegram ----------------------------------------------------- */
+
+  console.log('\ntelegram: update ids');
+
+  assert(await telegram.claimUpdate(updateId), 'a new update id is claimed');
+  assert(!(await telegram.claimUpdate(updateId)), 'the same update id, redelivered, is not');
+
+  console.log('\ntelegram: link tokens');
+
+  await db().query(`insert into auth.users (id, email) values ($1, $2)`, [
+    otherUserId,
+    `telegram-check-${otherUserId.slice(0, 8)}@example.invalid`,
+  ]);
+
+  const token = newLinkToken();
+  const soon = new Date(Date.now() + LINK_TTL_MS);
+  await telegram.createLinkToken(userId, hashLinkToken(token), soon);
+
+  const stored = await db().query(
+    `select token_hash from telegram_link_tokens where user_id = $1`,
+    [userId],
+  );
+  assert(
+    stored.rows.length === 1 && stored.rows[0].token_hash === hashLinkToken(token),
+    'only the hash of the token is stored',
+  );
+  assert(!JSON.stringify(stored.rows).includes(token), 'and the token itself is nowhere in the table');
+
+  const bound = await telegram.bindLinkToken(hashLinkToken(token), chatA);
+  assert(bound.ok && bound.userId === userId, 'the first chat to present a token binds it');
+  const stolen = await telegram.bindLinkToken(hashLinkToken(token), chatB);
+  assert(!stolen.ok, 'a second chat presenting the same token binds nothing');
+
+  const tokenId = bound.ok ? bound.tokenId : '';
+  assert(
+    (await telegram.consumeLinkToken(tokenId, chatB)) === null,
+    'another chat cannot consume a token bound elsewhere',
+  );
+  assert(
+    (await telegram.pendingLinkToken(tokenId, chatA)) === userId,
+    'the bound chat can see which account it is for',
+  );
+  assert((await telegram.consumeLinkToken(tokenId, chatA)) === userId, 'the bound chat consumes it');
+  assert((await telegram.consumeLinkToken(tokenId, chatA)) === null, 'and a replay consumes nothing');
+  assert(
+    !(await telegram.bindLinkToken(hashLinkToken(token), chatA)).ok,
+    'a used token cannot be bound again',
+  );
+  assert(
+    (await telegram.consumeLinkToken('not-a-uuid', chatA)) === null,
+    'a malformed token id is refused before it reaches a query',
+  );
+
+  const expired = newLinkToken();
+  await telegram.createLinkToken(userId, hashLinkToken(expired), new Date(Date.now() - 1_000));
+  assert(!(await telegram.bindLinkToken(hashLinkToken(expired), chatA)).ok, 'an expired token binds nothing');
+
+  const older = newLinkToken();
+  const newer = newLinkToken();
+  await telegram.createLinkToken(userId, hashLinkToken(older), soon);
+  await telegram.createLinkToken(userId, hashLinkToken(newer), soon);
+  assert(
+    !(await telegram.bindLinkToken(hashLinkToken(older), chatA)).ok,
+    'making a new link retires the previous one',
+  );
+
+  console.log('\ntelegram: linking, and the projection the daemon reads');
+
+  // A web-push device first, so the projection can be seen to leave it alone.
+  await store.addChannel(
+    userId,
+    { kind: 'webpush', endpoint: 'https://push.example.invalid/tg', p256dh: 'k', auth: 'a' },
+    'hi',
+  );
+
+  let linked = await telegram.linkChat(chatA, userId, '@checker');
+  assert(linked.ok && !linked.already, 'a chat links to the account');
+
+  status = await store.alertStatus(userId);
+  assert(
+    status.channels.telegram === 1 && status.channels.webpush === 1,
+    'the chat becomes a telegram channel beside the push device',
+    JSON.stringify(status),
+  );
+
+  const monitored = (await store.listLocations(userId)).map((l) => l.district).sort();
+  row = await db().query(`select districts from subscribers where id = $1`, [userId]);
+  assert(
+    (row.rows[0].districts as string[]).sort().join(',') === monitored.join(','),
+    'the daemon polls exactly the monitored districts',
+    JSON.stringify({ polled: row.rows[0].districts, monitored }),
+  );
+
+  linked = await telegram.linkChat(chatA, userId, '@checker');
+  assert(linked.ok && linked.already, 'linking the same chat again is a no-op');
+  status = await store.alertStatus(userId);
+  assert(status.channels.telegram === 1, 'and does not add a second channel');
+
+  const refused = await telegram.linkChat(chatA, otherUserId, '@intruder');
+  assert(
+    !refused.ok && refused.reason === 'otherAccount',
+    'a linked chat is never switched to another account',
+  );
+  assert((await telegram.readChat(chatA))?.userId === userId, 'and stays with its account');
+
+  linked = await telegram.linkChat(chatB, userId, '@checker2');
+  assert(
+    linked.ok && linked.movedFrom.length === 1 && linked.movedFrom[0] === chatA,
+    'a second Telegram takes the link over, and says from where',
+  );
+  assert((await telegram.readChat(chatA))?.userId === null, 'the first chat is unlinked');
+  assert((await telegram.chatForUser(userId))?.chatId === chatB, 'one Telegram per account');
+
+  row = await db().query(`select channels from subscribers where id = $1`, [userId]);
+  const telegramChannels = (row.rows[0].channels as { kind: string; chatId?: string }[]).filter(
+    (c) => c.kind === 'telegram',
+  );
+  assert(
+    telegramChannels.length === 1 && telegramChannels[0].chatId === String(chatB),
+    'alerts follow the link to the new chat',
+    JSON.stringify(telegramChannels),
+  );
+
+  assert((await telegram.setAlerts(chatB, false)) === userId, 'alerts can be paused in the chat');
+  status = await store.alertStatus(userId);
+  assert(
+    status.channels.telegram === 0 && status.channels.webpush === 1,
+    'pausing removes only the telegram channel',
+  );
+  await telegram.setAlerts(chatB, true);
+  status = await store.alertStatus(userId);
+  assert(status.channels.telegram === 1, 'and resuming restores it');
+
+  assert((await telegram.unlinkChat(chatB)) === userId, 'unlinking from the chat names the account it left');
+  status = await store.alertStatus(userId);
+  assert(
+    status.channels.telegram === 0 && status.channels.webpush === 1,
+    'unlinking removes the telegram channel and nothing else',
+    JSON.stringify(status),
+  );
+
+  await store.removeWebPushChannel(userId, 'https://push.example.invalid/tg');
+
+  await telegram.linkChat(chatB, userId, '@checker2');
+  assert((await telegram.unlinkUser(userId)).includes(chatB), 'unlinking from the web names the chats');
+  status = await store.alertStatus(userId);
+  assert(!status.enabled, 'with no channel left, alerts are off');
+  row = await db().query(`select districts from subscribers where id = $1`, [userId]);
+  assert(
+    (row.rows[0].districts as string[]).length === 0,
+    'and the daemon stops polling for an account it cannot reach',
+  );
+
+  await telegram.writeContext(chatB, { standing: null, history: [], at: new Date().toISOString() });
+  assert(
+    Array.isArray((await telegram.readChat(chatB))?.context.history),
+    'conversation context round-trips',
+  );
+
+  // Linked again, so account deletion below has a link to undo.
+  await telegram.linkChat(chatB, userId, '@checker2');
+  await telegram.createLinkToken(userId, hashLinkToken(newLinkToken()), soon);
+
+
   /* ---- deleting the account ---------------------------------------- */
 
   console.log('\ndeleting the account');
@@ -424,6 +600,17 @@ try {
     [userId],
   );
   assert(gone[0].n === 0, 'the account itself is gone');
+
+  const chatAfter = await telegram.readChat(chatB);
+  assert(
+    chatAfter !== null && chatAfter.userId === null,
+    'its Telegram chat is unlinked, not deleted — it can still ask as a guest',
+  );
+  const { rows: tokensLeft } = await db().query(
+    `select count(*)::int as n from telegram_link_tokens where user_id = $1`,
+    [userId],
+  );
+  assert(tokensLeft[0].n === 0, 'and no link token outlives the account');
 } finally {
   // Whatever happened, the throwaway account goes.
   await db()
@@ -431,6 +618,15 @@ try {
     .catch(() => {});
   await db()
     .query(`delete from profiles where id = $1`, [userId])
+    .catch(() => {});
+  await db()
+    .query(`delete from auth.users where id = $1`, [otherUserId])
+    .catch(() => {});
+  await db()
+    .query(`delete from telegram_chats where chat_id = any($1::bigint[])`, [[chatA, chatB]])
+    .catch(() => {});
+  await db()
+    .query(`delete from telegram_updates where update_id = $1`, [updateId])
     .catch(() => {});
   await closeDb();
 }

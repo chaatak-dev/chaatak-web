@@ -22,6 +22,7 @@ import { useApp } from './AppState';
 import { LanguagePanel } from './LanguagePanel';
 import { ThemeToggle } from './ThemeToggle';
 import { AlertsControl } from './AlertsControl';
+import { TelegramControl } from './TelegramControl';
 
 export function SettingsDialog({
   open,
@@ -99,6 +100,12 @@ export function SettingsDialog({
           <section className="settings__section">
             <h3 className="settings__heading">{t('alerts.heading')}</h3>
             <AlertsControl />
+            {/*
+              A second channel for the same places, not a second alert system.
+              Mounted only while settings is open, so it costs no request on
+              every page load.
+            */}
+            {open && <TelegramControl />}
           </section>
         )}
       </div>

@@ -12,18 +12,12 @@
 
 import { authConfigured } from '@/lib/auth/config';
 import { currentUser } from '@/lib/auth/server';
-import {
-  alertLanguage,
-  DEFAULT_PREFERENCES,
-  readPreferences,
-  resolveLanguages,
-} from '@/lib/i18n/preferences';
+import { DEFAULT_PREFERENCES, readPreferences } from '@/lib/i18n/preferences';
 import {
   alertStatus,
   deleteAccount,
   readProfile,
-  syncSubscriber,
-  writeLanguagePreferences,
+  saveLanguagePreferences,
 } from '@/lib/accounts/store';
 import { guardRate, json, readJson, withUser } from '@/lib/accounts/route';
 import { isMissingSchema } from '@/lib/db/pool';
@@ -92,20 +86,12 @@ export async function PATCH(request: Request): Promise<Response> {
 
     const preferences = readPreferences(body.languages ?? body);
 
-    /*
-     * No `navigator.languages` on a server, so `auto` resolves to the
-     * fallback here. That is the right answer for a dispatch: an alert sent
-     * at 3am cannot consult a browser, and English is the language IMD
-     * publishes warning codes in.
-     */
-    const resolved = resolveLanguages(preferences, undefined);
+    // The same path the Telegram bot's /settings takes. The alert language is
+    // derived there, from the same rules the interface uses, and the
+    // subscriber row the daemon reads is synced with it.
+    const alertLang = await saveLanguagePreferences(user.id, preferences);
 
-    await writeLanguagePreferences(user.id, preferences, alertLanguage(resolved));
-    // The subscriber row carries its own copy, because the daemon reads that
-    // row and nothing else.
-    await syncSubscriber(user.id);
-
-    return { ok: true, languages: preferences, alertLang: alertLanguage(resolved) };
+    return { ok: true, languages: preferences, alertLang };
   });
 }
 

@@ -20,7 +20,12 @@ import type { Grounding } from '../chat/types';
 import type { SpeechLang } from '../speech/types';
 import type { DistrictId, Location } from '../weather/types';
 import type { AuthUser } from '../auth/server';
-import { readPreferences, type LanguagePreferences } from '../i18n/preferences';
+import {
+  alertLanguage,
+  readPreferences,
+  resolveLanguages,
+  type LanguagePreferences,
+} from '../i18n/preferences';
 import type { InterfaceLang } from '../i18n/languages';
 import type {
   AddLocationResult,
@@ -93,6 +98,31 @@ export async function writeLanguagePreferences(
       where id = $1`,
     [userId, preferences.ui, preferences.assistant, preferences.voice, alertLang],
   );
+}
+
+/**
+ * Save the three preferences, and everything that follows from them.
+ *
+ * The one path for a preference change, whichever client made it — the web's
+ * settings panel and the Telegram bot's /settings both come here. The alert
+ * language is derived rather than accepted: resolved server-side from the
+ * same rules the interface uses, so the two cannot drift and a template that
+ * does not exist can never be asked for.
+ *
+ * No `navigator.languages` on a server, so an interface left on `auto`
+ * resolves to the fallback here. That is the right answer for a dispatch: an
+ * alert sent at 3am cannot consult a browser.
+ */
+export async function saveLanguagePreferences(
+  userId: string,
+  preferences: LanguagePreferences,
+): Promise<InterfaceLang> {
+  const alertLang = alertLanguage(resolveLanguages(preferences, undefined));
+  await writeLanguagePreferences(userId, preferences, alertLang);
+  // The subscriber row carries its own copy, because the daemon reads that
+  // row and nothing else.
+  await syncSubscriber(userId);
+  return alertLang;
 }
 
 export async function readProfile(userId: string): Promise<Profile | null> {
@@ -617,6 +647,25 @@ export async function deleteAccount(userId: string): Promise<void> {
   // Keyed on the subscriber id as text, with no foreign key to follow.
   await pool.query(`delete from dispatch_claims where subscriber_id = $1`, [userId]);
   await pool.query(`delete from dispatch_log where subscriber_id = $1`, [userId]);
+
+  /*
+   * Telegram. The chat itself is not the account's to delete — it is a
+   * conversation the person can keep having as a guest — so it is unlinked
+   * rather than removed, and any link token still outstanding goes.
+   *
+   * Tolerant of the tables being absent: a deployment that has not applied
+   * 004_telegram.sql must still be able to delete an account.
+   */
+  for (const statement of [
+    `update telegram_chats set user_id = null, linked_at = null where user_id = $1`,
+    `delete from telegram_link_tokens where user_id = $1`,
+  ]) {
+    try {
+      await pool.query(statement, [userId]);
+    } catch (error) {
+      if (!isPgError(error, PG_ERROR.undefinedTable)) throw error;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */

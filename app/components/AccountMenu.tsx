@@ -73,6 +73,35 @@ export function AccountMenu() {
     };
   }, [open]);
 
+  /*
+   * Arriving from the Telegram bot's "Connect" button: /?connect=telegram.
+   *
+   * Signed in, settings opens where the Telegram control is. Signed out, the
+   * drawer opens where sign-in is, and the parameter is LEFT in the address —
+   * sign-in returns to the same path and query, so settings opens on the way
+   * back. The drawer is opened either way because on a phone the sidebar is
+   * hidden while it is closed, and a dialog inside it would be too.
+   */
+  const { ready, configured, setDrawerOpen } = app;
+  const signedIn = Boolean(app.user);
+  useEffect(() => {
+    if (!ready || !configured) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connect') !== 'telegram') return;
+
+    // After the current render, not during it: this is a response to where
+    // the page was opened from, not to anything React rendered.
+    const timer = window.setTimeout(() => {
+      setDrawerOpen(true);
+      if (!signedIn) return;
+      params.delete('connect');
+      const query = params.toString();
+      window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+      setSettingsOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [ready, signedIn, configured, setDrawerOpen]);
+
   if (!app.configured) {
     /*
      * Accounts are switched off on this deployment, so there is nothing to

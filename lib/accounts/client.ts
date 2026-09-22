@@ -346,3 +346,45 @@ export async function unregisterPush(endpoint: string): Promise<AlertStatus | nu
   });
   return result.ok ? result.data.alerts : null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Telegram                                                            */
+/* ------------------------------------------------------------------ */
+
+export type TelegramState = {
+  /** Whether this deployment has a bot at all. */
+  available: boolean;
+  connected: boolean;
+  /** "@username" or a first name, as Telegram gave it at link time. */
+  displayName: string | null;
+  /** Whether warnings are delivered to the connected chat right now. */
+  alertsHere: boolean;
+  alerts: AlertStatus;
+};
+
+export async function fetchTelegram(): Promise<TelegramState | null> {
+  const result = await call<TelegramState>('/api/telegram');
+  return result.ok ? result.data : null;
+}
+
+/**
+ * A one-time link that connects a Telegram to this account.
+ *
+ * The account is the session's, decided on the server; nothing sent from here
+ * names it.
+ */
+export async function createTelegramLink(): Promise<
+  { ok: true; url: string; minutes: number } | { ok: false; status: number }
+> {
+  const result = await call<{ url: string; minutes: number }>('/api/telegram', {
+    method: 'POST',
+  });
+  return result.ok
+    ? { ok: true, url: result.data.url, minutes: result.data.minutes }
+    : { ok: false, status: result.status };
+}
+
+export async function disconnectTelegram(): Promise<TelegramState | null> {
+  const result = await call<TelegramState>('/api/telegram', { method: 'DELETE' });
+  return result.ok ? result.data : null;
+}

@@ -86,6 +86,8 @@ export const LIMITS = {
   locations: { limit: 20, windowMs: 60_000 },
   /** Adopting a guest transcript. Once per sign-in in practice. */
   import: { limit: 10, windowMs: 60_000 },
+  /** Making a Telegram link, or disconnecting one. A person does it once. */
+  telegram: { limit: 10, windowMs: 60_000 },
   /** Deleting the account. Irreversible, so a retry loop is the only caller. */
   destructive: { limit: 5, windowMs: 300_000 },
 } as const;

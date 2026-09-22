@@ -1917,6 +1917,20 @@ body:has(.chat) {
   color: var(--text-soft);
 }
 
+/* "Open Telegram" is a real link — a person following it is not a popup —
+   drawn as the same button the rest of the section uses. */
+.tgctl__open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.tgctl__open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ------------------------------------------------------------------ */
 /* Account block                                                       */
 /* ------------------------------------------------------------------ */

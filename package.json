@@ -14,7 +14,8 @@
     "build:gazetteer": "node scripts/build-gazetteer.mjs",
     "verify:imd": "node scripts/verify-imd.mjs",
     "build:imd-districts": "node scripts/build-imd-districts.mjs",
-    "build:imd-stations": "node --import tsx scripts/build-imd-stations.mts"
+    "build:imd-stations": "node --import tsx scripts/build-imd-stations.mts",
+    "telegram:setup": "node --import tsx scripts/telegram-setup.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
