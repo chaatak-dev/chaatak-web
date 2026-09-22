@@ -13,7 +13,7 @@
  * reachable from the browser.
  */
 
-import { LAYERS, sampleGrid, type LayerId } from '@/lib/map/layers';
+import { LAYERS, latticePoints, snapToLattice, type LayerId } from '@/lib/map/layers';
 import { TTL, cached } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
@@ -67,10 +67,18 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'Send west, south, east and north.' }, { status: 400 });
   }
 
-  const grid = sampleGrid({ west, south, east, north });
-  if (grid.length === 0) {
+  /*
+   * The viewport is snapped onto a fixed world lattice BEFORE anything else,
+   * and both the grid and the cache key come from the snapped tile. That is
+   * what makes panning cheap: a viewport that moves inside one cell produces
+   * the identical key and is served from cache without an upstream call.
+   */
+  const lattice = snapToLattice({ west, south, east, north });
+  if (!lattice) {
     return Response.json({ layer: layer.id, points: [] });
   }
+
+  const grid = latticePoints(lattice);
 
   const latitudes = grid.map((p) => p.lat.toFixed(3)).join(',');
   const longitudes = grid.map((p) => p.lon.toFixed(3)).join(',');
@@ -82,11 +90,13 @@ export async function GET(request: Request): Promise<Response> {
     `&current=${layer.field}&timezone=auto`;
 
   /*
-   * Cached on the rounded bounds and the layer, so panning a few pixels does
-   * not re-ask upstream for the same grid. The TTL matches the current-
-   * conditions cadence — these are the same model values.
+   * Keyed on the snapped tile and the layer, so panning a few pixels does not
+   * re-ask upstream for the same grid. The TTL matches the current-conditions
+   * cadence — these are the same model values.
    */
-  const key = `map:${layer.id}:${west.toFixed(1)},${south.toFixed(1)},${east.toFixed(1)},${north.toFixed(1)}`;
+  const key =
+    `map:${layer.id}:${lattice.step}:` +
+    `${lattice.west},${lattice.south},${lattice.east},${lattice.north}`;
 
   const result = await cached<MapResult>(
     key,

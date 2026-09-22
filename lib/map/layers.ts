@@ -280,6 +280,106 @@ function mix(a: string, b: string, t: number): string {
 export type Bounds = { west: number; south: number; east: number; north: number };
 
 /**
+ * The sampling cap.
+ *
+ * Every coordinate in a batched request counts separately against the
+ * upstream budget, so this number IS the request's cost. It was 144, which
+ * cost about 144 of the 600 calls a minute the free tier allows — six map
+ * interactions and the map started answering 429, which is exactly what
+ * production did.
+ */
+export const MAX_SAMPLES = 96;
+
+/**
+ * The ladder of lattice steps, in degrees.
+ *
+ * A fixed ladder rather than a step computed from the viewport, because two
+ * requests can only share a cached grid if they land on the SAME lattice. A
+ * computed step gives every pan its own spacing and therefore its own
+ * upstream call.
+ */
+const STEPS = [
+  0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 10, 15, 20, 30,
+  // The coarse end exists for a viewport zoomed out past India. Without it
+  // the ladder ran out, the grid came back empty, and a reader who pinched
+  // out too far got a map with no weather on it and no reason given.
+  45, 60, 90,
+];
+
+/** A viewport snapped outward onto one of those steps. */
+export type Lattice = Bounds & { step: number };
+
+/**
+ * Snap a viewport outward onto the finest lattice whose points fit the cap.
+ *
+ * WHY SNAP AT ALL. Sampling relative to the raw bounds gave every pan a fresh
+ * set of coordinates: a new upstream request, a new cache key, and a field
+ * that shimmered because each sample sat somewhere slightly different from
+ * the last frame. On a fixed lattice, panning inside one cell returns the
+ * identical points, which the cache then serves for nothing, and the field
+ * stays still under the reader because the samples are at world positions
+ * rather than at screen ones.
+ *
+ * WHY OUTWARD. The overlay interpolates between samples and paints to the
+ * edge of the canvas. Snapping inward would leave the edge with nothing to
+ * interpolate from; snapping outward gives it one step of margin. The samples
+ * therefore sit within one step of the viewport rather than strictly inside
+ * it, which is a bounded and deliberate change from the earlier rule.
+ */
+export function snapToLattice(bounds: Bounds, maxPoints = MAX_SAMPLES): Lattice | null {
+  const width = Math.abs(bounds.east - bounds.west);
+  const height = Math.abs(bounds.north - bounds.south);
+  if (width === 0 || height === 0) return null;
+
+  for (const step of STEPS) {
+    /*
+     * The step is chosen from the viewport's SIZE, never from the snapped
+     * extent. Snapping outward adds up to one cell on each side, so an extent
+     * grows and shrinks as the viewport slides across lattice lines — and
+     * choosing on it meant a pan could push the count past the cap and drop
+     * the whole map to a coarser spacing mid-drag. Width and height do not
+     * change when you pan, so this choice does not either.
+     */
+    const worstCols = Math.floor(width / step) + 3;
+    const worstRows = Math.floor(height / step) + 3;
+    if (worstCols * worstRows > maxPoints) continue;
+
+    const west = Math.floor(bounds.west / step) * step;
+    const east = Math.ceil(bounds.east / step) * step;
+    const south = Math.floor(bounds.south / step) * step;
+    const north = Math.ceil(bounds.north / step) * step;
+
+    return { step, west, south, east, north };
+  }
+
+  return null;
+}
+
+/**
+ * The points of a snapped lattice.
+ *
+ * Computed by index rather than by accumulating the step, because repeated
+ * addition drifts and a drifting lattice is not a lattice — two requests that
+ * should share a tile would round to different coordinates.
+ */
+export function latticePoints(lattice: Lattice): { lat: number; lon: number }[] {
+  const { step, west, south, east, north } = lattice;
+  const cols = Math.round((east - west) / step) + 1;
+  const rows = Math.round((north - south) / step) + 1;
+
+  const points: { lat: number; lon: number }[] = [];
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      points.push({
+        lat: Number((south + r * step).toFixed(4)),
+        lon: Number((west + c * step).toFixed(4)),
+      });
+    }
+  }
+  return points;
+}
+
+/**
  * A grid of sample points covering the viewport.
  *
  * VIEWPORT-BOUNDED AND CAPPED, which is the whole performance story. A map of
@@ -290,24 +390,7 @@ export type Bounds = { west: number; south: number; east: number; north: number 
  * The cap is on the total, not the spacing, so zooming out samples more
  * coarsely rather than asking for more.
  */
-export function sampleGrid(bounds: Bounds, maxPoints = 144): { lat: number; lon: number }[] {
-  const width = Math.abs(bounds.east - bounds.west);
-  const height = Math.abs(bounds.north - bounds.south);
-  if (width === 0 || height === 0) return [];
-
-  // A square-ish grid whose total lands under the cap.
-  const aspect = width / height;
-  const rows = Math.max(2, Math.floor(Math.sqrt(maxPoints / aspect)));
-  const cols = Math.max(2, Math.floor(maxPoints / rows));
-
-  const points: { lat: number; lon: number }[] = [];
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      points.push({
-        lat: bounds.south + (height * (r + 0.5)) / rows,
-        lon: bounds.west + (width * (c + 0.5)) / cols,
-      });
-    }
-  }
-  return points;
+export function sampleGrid(bounds: Bounds, maxPoints = MAX_SAMPLES): { lat: number; lon: number }[] {
+  const lattice = snapToLattice(bounds, maxPoints);
+  return lattice ? latticePoints(lattice) : [];
 }
