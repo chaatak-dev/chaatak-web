@@ -22,6 +22,16 @@ const HOST = 'https://api.open-meteo.com/v1/forecast';
 const AIR_HOST = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 const TIMEOUT_MS = 9000;
 
+type Sample = { lat: number; lon: number; value: number };
+
+/**
+ * Success carries points; failure carries what upstream said, so the two are
+ * told apart by the caller AND by the cache, which stores only the first.
+ */
+type MapResult =
+  | { ok: true; points: Sample[] }
+  | { ok: false; upstreamStatus: number | null };
+
 function number(url: URL, key: string): number | null {
   const raw = url.searchParams.get(key);
   if (raw === null || raw.trim() === '') return null;
@@ -78,42 +88,86 @@ export async function GET(request: Request): Promise<Response> {
    */
   const key = `map:${layer.id}:${west.toFixed(1)},${south.toFixed(1)},${east.toFixed(1)},${north.toFixed(1)}`;
 
-  const points = await cached(key, TTL.current, async () => {
-    try {
-      const res = await fetch(upstream, {
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { accept: 'application/json' },
-        cache: 'no-store',
-      });
-      if (!res.ok) return null;
+  const result = await cached<MapResult>(
+    key,
+    TTL.current,
+    async () => {
+      try {
+        const res = await fetch(upstream, {
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+          headers: { accept: 'application/json' },
+          cache: 'no-store',
+        });
 
-      // Open-Meteo returns an array for a batched request and a bare object
-      // for a single coordinate.
-      const body = (await res.json()) as unknown;
-      const rows = Array.isArray(body) ? body : [body];
+        if (!res.ok) {
+          /*
+           * Logged with the status and the size of the ask, because the
+           * failure that matters here is invisible from the outside: a
+           * batched grid can be refused for its weight while the very same
+           * host answers a single coordinate on the next route.
+           */
+          console.warn(
+            `[map] ${layer.id}: upstream ${res.status} for ${grid.length} points ` +
+              `(${upstream.length} char url)`,
+          );
+          return { ok: false, upstreamStatus: res.status };
+        }
 
-      return rows
-        .map((row, i) => {
-          const current = (row as { current?: Record<string, unknown> }).current;
-          const value = current?.[layer.field as string];
-          if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-          return { lat: grid[i]?.lat, lon: grid[i]?.lon, value };
-        })
-        .filter(
-          (p): p is { lat: number; lon: number; value: number } =>
-            p !== null && typeof p.lat === 'number' && typeof p.lon === 'number',
+        // Open-Meteo returns an array for a batched request and a bare object
+        // for a single coordinate.
+        const body = (await res.json()) as unknown;
+        const rows = Array.isArray(body) ? body : [body];
+
+        const points = rows
+          .map((row, i) => {
+            const current = (row as { current?: Record<string, unknown> }).current;
+            const value = current?.[layer.field as string];
+            if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+            return { lat: grid[i]?.lat, lon: grid[i]?.lon, value };
+          })
+          .filter(
+            (p): p is Sample =>
+              p !== null && typeof p.lat === 'number' && typeof p.lon === 'number',
+          );
+
+        return { ok: true, points };
+      } catch (error) {
+        console.warn(
+          `[map] ${layer.id}: upstream unreachable for ${grid.length} points —`,
+          error instanceof Error ? error.name : error,
         );
-    } catch {
-      return null;
-    }
-  });
+        return { ok: false, upstreamStatus: null };
+      }
+    },
+    /*
+     * A failure is not data and must not be remembered as if it were. Caching
+     * the null meant one refused request left the layer blank for the whole
+     * TTL, and the next reader was told there was no source when there was
+     * one that had simply been busy a minute ago.
+     */
+    (value) => value.ok,
+  );
 
-  if (points === null) {
+  if (!result.ok) {
+    /*
+     * The layer HAS a source; the source did not answer. Saying "no
+     * authoritative source for this layer" here — which is what a shared
+     * `noSource` did — states something permanent about a transient failure,
+     * and the two call for different words and different recovery.
+     */
     return Response.json(
-      { layer: layer.id, points: [], availability: { status: 'unavailable', reason: 'noSource' } },
-      { headers: { 'cache-control': 'no-store' } },
+      {
+        layer: layer.id,
+        unit: layer.unit,
+        availability: layer.availability,
+        points: [],
+        error: { kind: 'unreachable', upstreamStatus: result.upstreamStatus },
+      },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
     );
   }
+
+  const { points } = result;
 
   return Response.json(
     {

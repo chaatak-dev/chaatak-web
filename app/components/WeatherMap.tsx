@@ -42,7 +42,10 @@ type Sample = { lat: number; lon: number; value: number };
 type LayerData = {
   points: Sample[];
   unit: string;
+  /** Whether this layer has a source AT ALL. A permanent fact about it. */
   available: boolean;
+  /** Whether the source that exists failed to answer THIS time. */
+  failed: boolean;
 };
 
 /** How long to wait after a pan before asking for new numbers. */
@@ -196,7 +199,7 @@ export function WeatherMap({
     (bounds: Bounds) => {
       const layer = LAYERS[layerId];
       if (layer.availability.status === 'unavailable') {
-        setData({ points: [], unit: layer.unit, available: false });
+        setData({ points: [], unit: layer.unit, available: false, failed: false });
         return;
       }
 
@@ -210,8 +213,11 @@ export function WeatherMap({
         `&east=${bounds.east.toFixed(3)}&north=${bounds.north.toFixed(3)}`;
 
       void fetch(`/api/map?${query}`, { signal: controller.signal, cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((body) => {
+        // The body is read on a failure too: a refused grid answers 503 AND
+        // says why, and discarding it here would leave the reader with an
+        // empty map and no sentence at all.
+        .then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => null) }))
+        .then(({ ok, body }) => {
           // A viewport that has already been left. Drawing it now would show
           // the weather somewhere the reader is no longer looking.
           if (request.current !== controller) return;
@@ -221,6 +227,7 @@ export function WeatherMap({
             points: (body?.points ?? []) as Sample[],
             unit: body?.unit ?? LAYERS[layerId].unit,
             available: body?.availability?.status !== 'unavailable',
+            failed: !ok || Boolean(body?.error),
           });
         })
         .catch(() => {
@@ -345,6 +352,12 @@ export function WeatherMap({
 
         {data && !data.available && (
           <p className="wmap__status wmap__status--absent">{t('map.noSource')}</p>
+        )}
+
+        {data && data.available && data.failed && (
+          <p className="wmap__status wmap__status--absent" role="status">
+            {t('map.unreachable')}
+          </p>
         )}
 
         {inspected && (

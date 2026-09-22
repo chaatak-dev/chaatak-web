@@ -172,6 +172,16 @@ export const STRINGS = {
     en: 'No authoritative source for this layer, so nothing is drawn.',
   },
 
+  /*
+   * Deliberately NOT map.noSource. That sentence says this layer can never be
+   * drawn; this one says the source it does have did not answer just now. A
+   * reader can act on the second and only give up on the first.
+   */
+  'map.unreachable': {
+    hi: 'स्रोत ने अभी जवाब नहीं दिया। नक़्शा हिलाकर दोबारा कोशिश करें।',
+    en: 'The source did not answer just now. Move the map to try again.',
+  },
+
   /* ---- provenance -------------------------------------------------- */
   /* What KIND of value this is. It sits where an API path used to, because
      a visitor can act on "model" and cannot act on /api/v1/current_wx. */
