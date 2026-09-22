@@ -211,9 +211,21 @@ canvas read it through the same function so they cannot disagree about what a
 number looks like. The ramps are monotonic: a rainbow scale makes a small
 difference look larger than a big one, which is how heatwaves get misread.
 
-Sampling is bounded. `/api/map` takes the viewport, samples a grid **capped at
-144 points**, and is cached server-side. A layer that scaled its request with
-the viewport would ask for ten thousand readings at country zoom.
+Sampling is bounded, and it is bounded on a **fixed world lattice**. Upstream
+weights a batched request by the number of coordinates in it, so the cap is
+the request's price: at 144 points a handful of map interactions spent the
+whole free-tier minute and the map started answering 429 in production. The
+cap is 96 now — country zoom asks for 64 points, a district 42 — and because
+the samples sit at world positions rather than at screen ones, panning inside
+one lattice cell returns the identical grid and is served from cache for
+nothing. Twelve small pans across a district cost four upstream calls instead
+of twelve, and the field stops shimmering as it slides.
+
+The spacing is chosen from the viewport's **size**, never from the snapped
+extent, so it cannot change while you drag. And a failed request is never
+cached: a failure is not data, and remembering one told every reader for the
+rest of the TTL that a layer had no source when its source had merely been
+busy.
 
 **The alerts layer draws districts, never invented polygons.** IMD publishes a
 hazard code per district id and no geometry of any kind. A drawn boundary
