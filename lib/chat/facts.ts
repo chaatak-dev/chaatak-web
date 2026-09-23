@@ -54,13 +54,20 @@ export type WarningFacts =
  * provenance line cannot stand for both — a warning from IMD must not end up
  * attributed to whoever supplied the temperature.
  */
+const RANK: Record<string, number> = { none: 0, watch: 1, alert: 2, warning: 3 };
+
 export function warningFacts(
   answer: Warning[] | NoWarning | NoData,
   lang: InterfaceLang,
 ): WarningFacts {
   if (Array.isArray(answer)) {
+    // Loudest first, so the warning named first is the one the answer opens
+    // with. IMD lists them day by day, and an orange warning four days out
+    // arrived fourth — after three yellow ones, under a line that began
+    // "Orange warning". The sort is stable: same-severity order is IMD's.
+    const loudestFirst = [...answer].sort((a, b) => (RANK[b.severity] ?? 0) - (RANK[a.severity] ?? 0));
     return {
-      inForce: answer.map((w) => {
+      inForce: loudestFirst.map((w) => {
         const { hazards, unrecognised } = readHazards(w.code, lang);
         return {
           severity: w.severity,

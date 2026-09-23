@@ -106,3 +106,18 @@ const CITIES = [
 export const GAZETTEER: Set<string> = new Set(
   [...STATES, ...CITIES].map((p) => p.toLowerCase()),
 );
+
+/**
+ * The hand-written Hindi name for each place above, keyed by its English
+ * name, lower-cased. The lists are written in [English, Hindi] pairs, and
+ * these are the names a Hindi answer uses for the places people ask about
+ * most — checked by hand, where the larger gazetteer's aliases mix current
+ * names with old ones and nicknames.
+ */
+export const HINDI_NAME: ReadonlyMap<string, string> = new Map(
+  [STATES, CITIES].flatMap((list) => {
+    const pairs: [string, string][] = [];
+    for (let i = 0; i + 1 < list.length; i += 2) pairs.push([list[i].toLowerCase(), list[i + 1]]);
+    return pairs;
+  }),
+);

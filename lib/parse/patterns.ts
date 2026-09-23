@@ -15,8 +15,10 @@
  */
 
 import { GAZETTEER } from './gazetteer';
-import { findPlace } from './place-extract';
+import { findPlace, type PlaceEvidence } from './place-extract';
 import { LOCATION_FILLER, wantsCurrentLocation } from './location-intent';
+import { isLexiconWord } from '../i18n/detect';
+import { matchPlace } from '../weather/gazetteer/match';
 import type {
   CannotParse,
   CurrentLocationQuery,
@@ -53,15 +55,36 @@ const TIME_KEYWORDS: TimeKeyword[] = [
   },
 ];
 
+/*
+ * Spellings as people type them, not as a dictionary has them: romanised
+ * Hindi has no standard spelling, and "baarish" missing from this list left
+ * the word standing as a possible PLACE NAME in "last baarish kab hui?".
+ * Common misspellings of the English words are here for the same reason.
+ */
 const VARIABLE_KEYWORDS: { words: string[]; variable: Variable }[] = [
-  { words: ['बारिश', 'बरसात', 'वर्षा', 'barish', 'barsaat', 'rain', 'raining'], variable: 'rain' },
   {
-    words: ['तापमान', 'गर्मी', 'ठंड', 'taapman', 'tapman', 'garmi', 'thand', 'temperature', 'temp', 'hot', 'cold'],
+    words: [
+      'बारिश', 'बरसात', 'वर्षा', 'बूंदाबांदी', 'बूँदाबाँदी', 'barish', 'baarish',
+      'baarishein', 'barsaat', 'barsat', 'varsha', 'boondabaandi', 'rain', 'raining',
+      'rainfall', 'rained', 'rains', 'rainy', 'drizzle', 'shower', 'showers',
+      'precipitation',
+    ],
+    variable: 'rain',
+  },
+  {
+    words: [
+      'तापमान', 'गर्मी', 'ठंड', 'ठंडी', 'सर्दी', 'taapman', 'tapman', 'tapmaan',
+      'taapmaan', 'garmi', 'thand', 'thandi', 'sardi', 'temperature', 'temp',
+      'tempreture', 'temprature', 'temperture', 'hot', 'cold', 'heat',
+    ],
     variable: 'temperature',
   },
-  { words: ['हवा', 'आंधी', 'आँधी', 'hawa', 'aandhi', 'wind', 'windy'], variable: 'wind' },
-  { words: ['आर्द्रता', 'नमी', 'humidity', 'nami'], variable: 'humidity' },
-  { words: ['मौसम', 'mausam', 'weather'], variable: 'all' },
+  {
+    words: ['हवा', 'हवाएँ', 'आंधी', 'आँधी', 'hawa', 'hawaa', 'aandhi', 'andhi', 'wind', 'windy', 'winds', 'breeze'],
+    variable: 'wind',
+  },
+  { words: ['आर्द्रता', 'नमी', 'उमस', 'humidity', 'humid', 'nami', 'umas'], variable: 'humidity' },
+  { words: ['मौसम', 'मोसम', 'mausam', 'mosam', 'mousam', 'mausum', 'weather', 'wether'], variable: 'all' },
 ];
 
 const WARNING_KEYWORDS = [
@@ -94,6 +117,20 @@ const STOPWORDS = [
   'in', 'at', 'of', 'the', 'is', 'it', 'for', 'what', 'whats', 'hows', 'how',
   'will', 'be', 'like', 'there', 'tell', 'please', 'a', 'an', 'any', 'some',
   'koi', 'कोई', 'मेरे', 'mere', 'vahan', 'वहाँ', 'वहां',
+  /*
+   * The words the PAST is asked in. Without them "baarish kab hui thi?" left
+   * kab, hui and thi standing as possible place names, and a question with no
+   * place in it deferred to the model instead of asking "which place?".
+   */
+  'kab', 'when', 'hui', 'hua', 'huyi', 'huye', 'thi', 'tha', 'did', 'was', 'were',
+  'rained', 'rainfall', 'much', 'many', 'yesterday', 'ago', 'last', 'past',
+  'previous', 'week', 'weeks', 'month', 'day', 'days', 'hour', 'hours', 'time',
+  'pichhle', 'pichle', 'pichhli', 'pichli', 'din', 'ghante', 'hafte', 'mahine',
+  'baar', 'aakhri', 'akhri', 'gaya', 'gayi', 'padi', 'pada', 'barsi', 'barsa',
+  'कब', 'हुई', 'हुआ', 'हुए', 'थी', 'था', 'थे', 'पिछले', 'पिछली', 'दिन', 'घंटे',
+  'हफ़्ते', 'हफ्ते', 'बार', 'आखिरी', 'आख़िरी', 'गया', 'गई', 'पड़ी', 'बरसी',
+  // And the future's, which the time reader now handles.
+  'next', 'forecast', 'tonight', 'later', 'agle', 'agla', 'अगले',
 ];
 
 /* ------------------------------------------------------------------ */
@@ -173,7 +210,115 @@ const ALL_KEYWORDS = [
 export function extractPlace(text: string): string | null {
   const masked = blankContractions(blank(text, ALL_KEYWORDS));
   const evidence = findPlace(text, masked, masked !== text, GAZETTEER);
-  return evidence.kind === 'found' ? evidence.place : null;
+  if (evidence.kind !== 'found') return null;
+  if (evidence.via === 'whole') return barePlace(text)?.place ?? null;
+  return evidence.place;
+}
+
+/* ------------------------------------------------------------------ */
+/* A message that is nothing but a place                               */
+/* ------------------------------------------------------------------ */
+
+/** Politeness and particles around a bare name: "Lucknow please", "Lucknow ka?". */
+const AROUND_A_NAME = [
+  'please', 'pls', 'plz', 'bhai', 'bhaiya', 'yaar', 'ji', 'sir', 'madam', 'ka',
+  'ki', 'ke', 'mein', 'me', 'ko', 'का', 'की', 'के', 'में', 'को', 'जी',
+];
+
+export type BarePlace = { place: string; how: 'exact' | 'fuzzy' };
+
+/**
+ * The place, when the whole message is one: "Lucknow", "लखनऊ?", "lucknow
+ * please". Otherwise null.
+ *
+ * THIS IS WHERE "ohh really" USED TO BECOME A PLACE. The old rule was "no
+ * keyword in it, so the message IS the place" — which made every reaction,
+ * greeting and typo a geocoder query. A whole message is now a place only
+ * when the gazetteer — every district IMD warns on and every town of 50,000 —
+ * recognises it, and only when none of its words is ordinary speech: the
+ * gazetteer's fuzzy matcher reads "kitni" as Katni and "than" is an exact
+ * alias of Thane, so a message made of talk is never matched however close
+ * it comes.
+ *
+ * A village too small for the gazetteer is still reachable: in a sentence
+ * ("Rampur Khas mein mausam"), as the answer to "which place?", after
+ * "actually", or through the classifier — every one of them evidence that a
+ * place is what the person meant. Only the guess is gone.
+ */
+export function barePlace(text: string): BarePlace | null {
+  let candidate = text.trim().replace(/[।?!.,…]+$/u, '').trim();
+  // Particles and politeness either side of the name, verbatim positions kept.
+  for (let pass = 0; pass < 2; pass++) {
+    for (const word of AROUND_A_NAME) {
+      const edge = new RegExp(
+        `^(?:${word})(?![\\p{L}\\p{M}])\\s*|\\s*(?<![\\p{L}\\p{M}])(?:${word})$`,
+        'giu',
+      );
+      candidate = candidate.replace(edge, '').trim();
+    }
+    candidate = candidate.replace(/^[,\s]+|[,\s।?!.]+$/gu, '').trim();
+  }
+
+  if (!candidate) return null;
+  const tokens = candidate.split(/\s+/);
+  if (tokens.length > 4) return null;
+  if (/\d/.test(candidate)) return null;
+  if (tokens.some((token) => isLexiconWord(token.replace(/[^\p{L}\p{M}'’]/gu, '')))) return null;
+
+  const match = matchPlace(candidate);
+  if (!match) return null;
+  return { place: candidate, how: match.how };
+}
+
+/* ------------------------------------------------------------------ */
+/* The shape of a question                                             */
+/* ------------------------------------------------------------------ */
+
+export type QuestionShape = {
+  /** The variable asked about, if a word for one was used. */
+  variable: Variable | null;
+  /** A warning, an alert, or a named hazard was asked about. */
+  isWarning: boolean;
+  /** A word for the weather, a variable, a hazard — anything that makes this weather talk. */
+  weatherWord: boolean;
+  /** Evidence of a place in the sentence. `whole` has already been confirmed. */
+  place: PlaceEvidence;
+  /** The question is about where the person is. */
+  wantsHere: boolean;
+};
+
+/**
+ * What a sentence says about weather, minus the time — which `readTime`
+ * reads, because कल has to be read with its verb and this layer never did.
+ */
+export function readShape(text: string): QuestionShape {
+  const trimmed = text.trim().replace(/[।?!.]+$/u, '').trim();
+
+  let variable: Variable | null = null;
+  for (const entry of VARIABLE_KEYWORDS) {
+    if (entry.words.some((w) => matches(trimmed, w))) {
+      variable = entry.variable;
+      break;
+    }
+  }
+  const isWarning = WARNING_KEYWORDS.some((w) => matches(trimmed, w));
+
+  const masked = blankContractions(blank(trimmed, ALL_KEYWORDS));
+  let place = findPlace(trimmed, masked, masked !== trimmed, GAZETTEER);
+
+  // A "whole message" claim is only a claim once the gazetteer agrees.
+  if (place.kind === 'found' && place.via === 'whole') {
+    const bare = barePlace(trimmed);
+    place = bare ? { kind: 'found', place: bare.place, via: 'gazetteer' } : { kind: 'unsure' };
+  }
+
+  return {
+    variable,
+    isWarning,
+    weatherWord: variable !== null || isWarning,
+    place,
+    wantsHere: wantsCurrentLocation(trimmed),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -255,6 +400,15 @@ export const patternParser: Parser = {
     // Guessing here is how "क्या आज घर से निकलूँ?" became a forecast for
     // Nepal, so this defers to the layer that can tell the difference.
     if (evidence.kind === 'unsure') return null;
+
+    /*
+     * The whole message, with no keyword in it at all. It is a place only if
+     * the gazetteer says so — see `barePlace`. "ohh really" and "wassup"
+     * were geocoded through here, one reply at a time, as "No place matched".
+     */
+    if (evidence.kind === 'found' && evidence.via === 'whole' && !barePlace(trimmed)) {
+      return null;
+    }
 
     const place = evidence.kind === 'found' ? evidence.place : null;
 

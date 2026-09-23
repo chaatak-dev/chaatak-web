@@ -14,6 +14,8 @@ import { openMeteo } from './open-meteo';
 import type {
   DistrictId,
   Forecast,
+  History,
+  HistoryRequest,
   Location,
   NoData,
   NoWarning,
@@ -118,6 +120,9 @@ export const fixtureSource: WeatherSource = {
   },
   getForecast(loc: Location, days: number): Promise<Forecast | NoData> {
     return openMeteo.getForecast(loc, days);
+  },
+  getHistory(loc: Location, request: HistoryRequest): Promise<History | NoData> {
+    return openMeteo.getHistory(loc, request);
   },
 
   async getWarnings(district: DistrictId): Promise<Warning[] | NoWarning | NoData> {

@@ -136,6 +136,18 @@ export function index(): NameIndex {
   return cached;
 }
 
+/**
+ * Every name Wikidata records for the place whose canonical name this is —
+ * current names, old names, regions and nicknames alike. Empty when the
+ * gazetteer does not hold it.
+ */
+export function recordedNames(name: string): string[] {
+  const key = normalise(name);
+  if (!key) return [];
+  const hit = (data.entries as RawEntry[]).find((e) => normalise(e.n) === key);
+  return hit ? [...(hit.a ?? [])] : [];
+}
+
 export const GAZETTEER_SOURCE = data.source;
 export const GAZETTEER_GENERATED = data.generated;
 

@@ -19,7 +19,16 @@
  *   updated — the source last refreshed these values (Open-Meteo `current.time`).
  *   valid   — the values describe this moment, with no publication time given.
  */
-export type TimeBasis = 'issued' | 'updated' | 'valid';
+export type TimeBasis =
+  | 'issued'
+  | 'updated'
+  | 'valid'
+  /**
+   * A past series: the values run up to this moment and no further. A
+   * history has no issue time — nothing about last Tuesday was "issued" — and
+   * calling its end "updated" would read as a refresh of the present.
+   */
+  | 'through';
 
 /**
  * What KIND of thing a number is.
@@ -30,7 +39,23 @@ export type TimeBasis = 'issued' | 'updated' | 'valid';
  * evaluated at this hour; a district warning is a bulletin somebody issued.
  * The interface says which, because "31°C" means something different in each.
  */
-export type ValueNature = 'observation' | 'model' | 'bulletin';
+export type ValueNature =
+  | 'observation'
+  | 'model'
+  | 'bulletin'
+  /**
+   * The past, as a model saw it at the time: the opening hours of successive
+   * forecast runs stitched into a series. Modelled, never measured — a rain
+   * gauge in the village may disagree, and the interface says which this is.
+   */
+  | 'archivedForecast'
+  /**
+   * The past reconstructed afterwards by a model constrained by the
+   * observations of the day (ERA5). Still modelled, still gridded, and still
+   * not a station reading — but a different claim from an archived forecast,
+   * so it is named apart from one.
+   */
+  | 'reanalysis';
 
 /**
  * Provenance is part of the value, never optional metadata. Any type carrying
@@ -164,14 +189,83 @@ export type ForecastDay = {
   maxTemp: number | null;
   minTemp: number | null;
   precipitationSum: number | null;
+  /**
+   * The day's strongest wind, and the model's highest chance of rain in it.
+   * Optional because older snapshots were stored without them; absent and
+   * null both mean "not given", and neither is ever filled in.
+   */
+  maxWind?: number | null;
+  precipitationProbability?: number | null;
 };
 
 export type Forecast = {
   kind: 'forecast';
   days: ForecastDay[];
-  units: { temperature: string; precipitation: string };
+  units: { temperature: string; precipitation: string; wind?: string; probability?: string };
   provenance: Provenance;
 };
+
+/* ------------------------------------------------------------------ */
+/* The past                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One hour of a past series.
+ *
+ * `time` is the END of the hour, because that is what the value is: the
+ * precipitation labelled 14:00 fell between 13:00 and 14:00. Reading it as
+ * the start would move every rain event an hour early.
+ */
+export type HistoryHour = {
+  time: string;
+  precipitation: number | null;
+  rain: number | null;
+  temperature: number | null;
+};
+
+/** One past calendar day, in the place's own zone, exactly as upstream gave it. */
+export type HistoryDay = {
+  date: string;
+  conditionCode: number | null;
+  maxTemp: number | null;
+  minTemp: number | null;
+  precipitationSum: number | null;
+  rainSum: number | null;
+  /** Hours in the day with measurable precipitation, as upstream counts them. */
+  precipitationHours: number | null;
+  maxWind: number | null;
+};
+
+/**
+ * What happened at one place over a stretch of the past.
+ *
+ * Only ever the past: an hour or a day that has not finished is not in here,
+ * because a forecast for the rest of today dressed as history is the same lie
+ * as history dressed as the present.
+ */
+export type History = {
+  kind: 'history';
+  /** Hourly values, oldest first. Empty when only days were asked for. */
+  hours: HistoryHour[];
+  /** Whole days, oldest first. */
+  days: HistoryDay[];
+  units: { precipitation: string; temperature: string; wind: string };
+  /** The first and last calendar days covered, YYYY-MM-DD, in the place's zone. */
+  from: string;
+  to: string;
+  /**
+   * `nature` is archivedForecast or reanalysis — never observation — and
+   * `timeBasis` is `through`, with `issuedAt` the end of the last value.
+   */
+  provenance: Provenance;
+};
+
+/** What a caller wants from the past. */
+export type HistoryRequest =
+  /** Hourly and daily values for the last N days, up to the latest complete hour. */
+  | { kind: 'recent'; pastDays: number }
+  /** Daily values for explicit calendar dates, YYYY-MM-DD inclusive, in the place's zone. */
+  | { kind: 'dates'; from: string; to: string };
 
 /** IMD's warning scale. Drives layout, not accent colour. */
 export type Severity = 'none' | 'watch' | 'alert' | 'warning';
@@ -249,4 +343,12 @@ export interface WeatherSource {
    * result into `noWarning` so consumers never interpret emptiness themselves.
    */
   getWarnings(district: DistrictId): Promise<Warning[] | NoWarning | NoData>;
+  /**
+   * What already happened here.
+   *
+   * `noData` when the source holds nothing for that stretch — and it is
+   * never answered from the present or the forecast instead. A past-tense
+   * question that cannot be answered says so.
+   */
+  getHistory(loc: Location, request: HistoryRequest): Promise<History | NoData>;
 }

@@ -32,7 +32,7 @@ import { MAX_IMPORT_TURNS, readImportedTurn } from '@/lib/accounts/import';
 import { conversationTitle } from '@/lib/accounts/title';
 import { guardRate, HttpError, readJson, withUser } from '@/lib/accounts/route';
 import type { TurnToStore } from '@/lib/accounts/store';
-import { replyLanguage } from '@/lib/i18n/languages';
+import { replyLanguage } from '@/lib/i18n/detect';
 
 export const dynamic = 'force-dynamic';
 

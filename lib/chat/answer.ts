@@ -1,58 +1,89 @@
 /**
  * The chat pipeline, callable from any client.
  *
- *   parse → fetch → render → VERIFY → ship
+ *   language → understand → place (only if needed) → fetch → render → VERIFY → ship
  *
- * This lived inside POST /api/chat, which was fine while the browser was the
- * only thing that asked questions. The Telegram bot asks the same questions
- * and must get the same answers — the same parser, the same place pipeline,
- * the same snapshot, the same gate — so the pipeline moved here and every
- * client calls it. A second copy for Telegram would have been a second place
- * deciding what counts as a weather value, which is the one decision this
- * product cannot afford to make twice.
+ * One pipeline for every way a question arrives: typed on the web, spoken on
+ * the web, sent from Telegram. A spoken turn is a typed turn with a
+ * recogniser's language attached; there is no voice-only path, because a
+ * second path would be a second place deciding what counts as a weather
+ * value, which is the one decision this product cannot afford to make twice.
+ *
+ * THE ORDER IS THE FIX. The language is decided first, from the turn and its
+ * conversation, and handed to the response layer rather than left to it. Then
+ * the turn is understood — social, a question, a follow-up, a correction — and
+ * only a turn that actually gives or needs a place reaches the place
+ * resolver. "ohh really" is a reaction and gets a reply; it is never a
+ * geocoder query again.
  *
  * Nothing here knows who is asking or where the answer is going. Identity,
- * persistence and presentation belong to the caller: the web route saves the
- * turn into a signed-in person's history, and the bot formats it for a chat.
+ * persistence and presentation belong to the caller.
  *
  * An answer always comes back. If the model is out or the gate rejects, the
- * template goes instead and the user never learns a provider failed.
+ * template goes instead — a template written for the question that was asked.
  */
 
-import { answerStyle, replyLanguage, type InterfaceLang } from '../i18n/languages';
+import { severityWords } from '../alerts/templates';
+import {
+  chromeLanguage,
+  conversationLanguage,
+  readTurnLanguage,
+  resolveTurnLanguage,
+  speechLanguage,
+  styleFor,
+  templateLanguage,
+  type TemplateLang,
+  type TurnLanguage,
+} from '../i18n/detect';
+import { language, type InterfaceLang, type LanguageCode, type ScriptCode } from '../i18n/languages';
 import type { LanguagePreference } from '../i18n/preferences';
 import type { TitleInput } from '../accounts/title';
-import { resolvePoint } from '../weather/point';
-import type { Coords } from './coords';
-import { wantsCurrentLocation } from '../parse/location-intent';
-import { ASK_FOR_LOCATION, REDIRECT } from './scope';
-import { classify } from './classify';
-import { boundContext } from './context';
-import { warningFacts } from './facts';
-import type { FactsSnapshot, Grounding, Message, StandingQuery } from './types';
 import { logQuery } from '../log';
-import { GAZETTEER } from '../parse/gazetteer';
-import { patternParser } from '../parse/patterns';
+import { GAZETTEER, HINDI_NAME } from '../parse/gazetteer';
+import { devanagariName } from '../weather/gazetteer/match';
+import { todayInIndia } from '../parse/time';
+import type { TimeWindow } from '../parse/types';
 import { writeReply } from '../render/reply';
+import { languageAck, unknownPlace, weatherTemplate } from '../render/templates';
 import type { SpeechLang } from '../speech/types';
 import type { WeatherSnapshot } from '../weather/api';
-import { placeResolver } from '../weather/source';
+import { resolvePoint } from '../weather/point';
 import { snapshotFor, worstSeverity } from '../weather/snapshot';
-import { conditionFor } from '../weather/wmo';
-import { scriptOf } from '../weather/gazetteer/normalise';
-import type { Severity } from '../weather/types';
+import { placeResolver, weatherSource } from '../weather/source';
+import type { Forecast, History, HistoryRequest, Location, NoData, Provenance } from '../weather/types';
+import { classify } from './classify';
+import { boundContext } from './context';
+import type { Coords } from './coords';
+import { warningFacts } from './facts';
+import { fetchHistory, todayAt, type HistoryResult } from './history-answer';
+import { ASK_FOR_LOCATION, REDIRECT } from './scope';
+import { socialReply, UNCLEAR, unclearPlace } from './social';
+import {
+  currentFacts,
+  describeAsked,
+  focusDates,
+  historyFacts,
+  historyNature,
+  outlookFacts,
+  type TurnFacts,
+} from './turn-facts';
+import type { FactsSnapshot, Grounding, Message, StandingQuery } from './types';
+import { fallbackPlan, understandLocally, type Plan, type WeatherPlan } from './understand';
 
 export type AnswerInput = {
   question: string;
   /**
-   * The spoken or device language. Breaks the tie only when the question has
-   * no letters to judge — a bare numeral, an emoji.
+   * The client's voice or device language. A fallback only: it breaks a tie
+   * the words cannot (a bare numeral, Hindi or Marathi) and is never read as
+   * evidence of what was typed.
    */
   lang: SpeechLang;
   /**
-   * The language to answer in, when the person has named one. `auto` means
-   * mirror whatever they wrote.
+   * The language a recogniser DETECTED for this turn, when it was spoken.
+   * Evidence about the turn, unlike `lang`.
    */
+  heard?: LanguageCode | null;
+  /** The assistant preference: `auto` resolves per turn. */
   assistant: LanguagePreference;
   history: Message[];
   standing: StandingQuery | null;
@@ -65,7 +96,12 @@ export type AnswerInput = {
 
 export type ChatReply = {
   text: string;
+  /** The language the answer is written in — decided before it was written. */
   lang: SpeechLang;
+  /** Its script, where that is not the language's own: Hinglish is hi + Latn. */
+  script: ScriptCode;
+  /** The voice that can read it aloud: the answer's language, not the setting's. */
+  speakAs: LanguageCode;
   grounding?: Grounding;
   standing: StandingQuery | null;
   /**
@@ -77,392 +113,599 @@ export type ChatReply = {
   /** The place was named by a coordinate, so the answer says which place. */
   usedDeviceLocation?: { name: string; district: string | null };
   /**
-   * The weather this turn was answered from.
-   *
-   * Carried so a second surface shows the SAME numbers the answer used rather
-   * than fetching its own — two independent fetches land in different cache
-   * windows and disagree by a degree at exactly the moment somebody notices.
+   * The weather this turn was answered from, so a second surface shows the
+   * SAME numbers the answer used rather than fetching its own.
    */
   snapshot?: WeatherSnapshot;
-  /** Where this turn was saved. Absent for a guest. */
   conversationId?: string;
-  /** The conversation's title, when this turn is the one that set it. */
   conversationTitle?: string | null;
   /** Diagnostics, useful in the demo and harmless to expose. */
-  meta: { parseLayer: string; fromModel: boolean; gate: string; latencyMs: number };
+  meta: {
+    parseLayer: string;
+    act: string;
+    fromModel: boolean;
+    gate: string;
+    latencyMs: number;
+    langBasis: TurnLanguage['basis'];
+    langConfidence: TurnLanguage['confidence'];
+  };
 };
 
 export type Answer = {
   reply: ChatReply;
   /**
    * The language templates and the warning taxonomy were written in this
-   * turn. A client laying chrome around the answer uses the same one, so a
-   * reply is never half one language and half another.
+   * turn. A client laying chrome around the answer uses the same one.
    */
   chrome: InterfaceLang;
   /** What a conversation title is composed from, for a caller that saves. */
   title: TitleInput;
 };
 
-export async function answerQuestion(input: AnswerInput): Promise<Answer> {
-  const started = Date.now();
-  const { question, lang, history } = input;
-  const standing = input.standing ?? null;
+/**
+ * Everything the pipeline reaches outside itself for. Real by default; a test
+ * replaces any of them to run a whole conversation with no network.
+ */
+export type AnswerDeps = {
+  resolvePlace: (query: string) => Promise<Location | NoData>;
+  snapshot: (place: Location) => Promise<WeatherSnapshot>;
+  forecast: (place: Location, days: number) => Promise<Forecast | NoData>;
+  history: (place: Location, request: HistoryRequest) => Promise<History | NoData>;
+  classify: typeof classify;
+  render: typeof writeReply;
+  now: () => Date;
+};
 
-  /**
-   * The language this turn is answered in, taken from the script the user
-   * wrote in rather than from the voice toggle. The toggle chooses a VOICE; it
-   * must not decide the script of written text.
-   *
-   * The same value drives the warning taxonomy, so a reply can never come out
-   * half English template and half Hindi condition word.
-   */
-  const chrome = replyLanguage(question, lang, input.assistant);
-  /** Which language and script the model is told to write in, and is held to. */
-  const answer = answerStyle(question, lang, input.assistant);
+const REAL: AnswerDeps = {
+  resolvePlace: (query) => placeResolver().resolve(query),
+  snapshot: (place) => snapshotFor(place),
+  forecast: (place, days) => weatherSource().getForecast(place, days),
+  history: (place, request) => weatherSource().getHistory(place, request),
+  classify,
+  render: writeReply,
+  now: () => new Date(),
+};
 
-  /* ---- parse: patterns first, model only on a miss ---------------- */
+/** The forecast the snapshot carries; a question further out fetches more. */
+const SNAPSHOT_DAYS = 3;
+const FORECAST_MAX_DAYS = 16;
 
-  let parseLayer = 'pattern';
-  let inScope = true;
-  let needsWeather = true;
-  let place = '';
-  let intent = standing?.intent ?? 'current';
-  let timeWindow = standing?.timeWindow ?? ({ kind: 'now' } as const);
-  let variable = standing?.variable ?? ('all' as const);
+/* ------------------------------------------------------------------ */
+/* Reading what the client sent                                        */
+/* ------------------------------------------------------------------ */
 
-  const byPattern = await patternParser.parse(question, {
-    lang,
-    lastPlace: standing?.place ?? undefined,
-  });
-
-  /**
-   * True when the question asked about where the person IS.
-   *
-   * It overrides the standing place, which is the whole point of telling it
-   * apart from "no place mentioned": someone who asked about Delhi and then
-   * asks what it is like near them is asking about near them.
-   */
-  let wantsHere = false;
-
-  if (byPattern?.kind === 'currentLocation') {
-    // "weather near me". The place is named — it is here — so there is
-    // nothing to ask about and nothing to inherit.
-    wantsHere = true;
-    needsWeather = true;
-    intent = byPattern.intent;
-    timeWindow = byPattern.timeWindow;
-    variable = byPattern.variable;
-  } else if (byPattern?.kind === 'query') {
-    place = byPattern.placeWasImplied ? (standing?.place ?? '') : byPattern.place;
-    intent = byPattern.intent;
-    timeWindow = byPattern.timeWindow;
-    variable = byPattern.variable;
-  } else if (byPattern?.kind === 'cannotParse' && byPattern.reason === 'noPlace') {
-    /*
-     * "temperature". "will it rain?". "aaj ka mausam".
-     *
-     * The pattern layer returns noPlace for exactly one situation: it
-     * recognised a weather question and found no place in the sentence, with
-     * none carried over from the conversation. That is precisely what this
-     * pipeline needs to know, and spending an LLM call rediscovering it on the
-     * most common phrasings in the product would be waste.
-     *
-     * The model is the exception path, not the default.
-     */
-    needsWeather = true;
-  } else {
-    parseLayer = 'llm';
-    const classified = await classify(question, standing);
-    if (classified) {
-      inScope = classified.inScope;
-      needsWeather = classified.needsWeather;
-      place = classified.place || (standing?.place ?? '');
-      intent = classified.intent;
-      timeWindow = classified.timeWindow;
-      variable = classified.variable;
-    } else {
-      // Providers all out. Treat it as conversational and let the template
-      // answer rather than refusing.
-      needsWeather = false;
-    }
-
-    /*
-     * The same rule, applied to whatever the model returned. If the question
-     * says "here" and no real place came back, it is a current-location
-     * question whichever layer read it.
-     */
-    if (needsWeather && inScope && wantsCurrentLocation(question)) {
-      const namedSomewhere = Boolean(place) && !wantsCurrentLocation(place);
-      if (!namedSomewhere) {
-        wantsHere = true;
-        place = '';
-      }
-    }
-  }
-
-  /**
-   * The place a title is made of. The resolved, canonical name once there is
-   * one; what the person typed until then.
-   */
-  let titlePlace: string | null = place || null;
-
-  /** Every exit goes through this, so the title is composed the same way. */
-  const done = (reply: ChatReply): Answer => ({
-    reply,
-    chrome,
-    title: {
-      question,
-      place: titlePlace,
-      intent,
-      timeWindow,
-      variable,
-      lang: chrome,
-    },
-  });
-
-  const meta = (fromModel = false, gate = 'skipped') => ({
-    parseLayer,
-    fromModel,
-    gate,
-    latencyMs: Date.now() - started,
-  });
-
-  /* ---- out of scope: one friendly line, no lecture ---------------- */
-
-  if (!inScope) {
-    logQuery({
-      parseLayer: 'llm',
-      cacheHit: false,
-      latencyMs: Date.now() - started,
-      lang,
-      outcome: 'cannotParse',
-    });
-    return done({ text: REDIRECT[chrome], lang, standing, meta: meta() });
-  }
-
-  /* ---- fetch, when the answer needs values ------------------------ */
-
-  let facts: FactsSnapshot | null = null;
-  let snapshot: WeatherSnapshot | undefined;
-  let grounding: Grounding | undefined;
-  let severity: Severity | 'unknown' = 'unknown';
-  let nextStanding = standing;
-  const places: string[] = [];
-
-  /*
-   * "temperature", with no place in the sentence and none carried over.
-   *
-   * The question needs somewhere to be about, so this is where a location
-   * earns its keep — and the ONLY place it is ever asked for. A coordinate
-   * arrives only after the person has been asked once and said yes. Until
-   * then the reply is a question, carrying `needsLocation` so the client can
-   * offer a location beside it.
-   */
-  const point = input.coords;
-  const wantsPlace = needsWeather && !place && (wantsHere || !standing?.place);
-  let fromDevice: { name: string; district: string | null } | undefined;
-
-  if (wantsPlace && point) {
-    const here = resolvePoint(point.latitude, point.longitude);
-
-    if ('kind' in here) {
-      return done({ text: here.statement[chrome], lang, standing, meta: meta() });
-    }
-
-    // The canonical name takes over from here. Everything downstream sees a
-    // place name exactly as if it had been typed, and the coordinate is not
-    // referred to again.
-    place = here.name;
-    titlePlace = here.name;
-
-    /*
-     * Parse it again, now that there is somewhere for it to be about.
-     *
-     * "weather tomorrow" told the pattern layer everything except where.
-     * Handing the resolved name back as the remembered place lets the same
-     * parser produce the full query without a model.
-     */
-    const withPlace = await patternParser.parse(question, {
-      lang,
-      lastPlace: here.name,
-    });
-
-    if (withPlace?.kind === 'query') {
-      intent = withPlace.intent;
-      timeWindow = withPlace.timeWindow;
-      variable = withPlace.variable;
-    }
-    // Said out loud in the reply, because an answer about somewhere the
-    // person did not name has to state which somewhere.
-    fromDevice = { name: here.name, district: here.admin2 ?? null };
-  } else if (wantsPlace) {
-    return done({
-      text: ASK_FOR_LOCATION[chrome],
-      lang,
-      standing,
-      needsLocation: true,
-      meta: meta(),
-    });
-  }
-
-  if (needsWeather && place) {
-    const resolved = await placeResolver().resolve(place);
-
-    if ('kind' in resolved) {
-      // Unresolvable place: an honest statement, no model call at all.
-      logQuery({
-        parseLayer: parseLayer as 'pattern' | 'llm',
-        cacheHit: false,
-        latencyMs: Date.now() - started,
-        lang,
-        outcome: 'noData',
-      });
-      return done({ text: resolved.statement[chrome], lang, standing, meta: meta() });
-    }
-
-    /*
-     * The place a title carries, in the script the question was written in.
-     * Never switching script on the user applies to a label as much as to an
-     * answer, so when the two disagree the user's own words win.
-     */
-    titlePlace =
-      place && scriptOf(place) !== scriptOf(resolved.name) ? place : resolved.name;
-
-    // The one canonical view of this location. Every client shows these
-    // numbers and no others.
-    snapshot = await snapshotFor(resolved);
-    const { current, outlook, warnings } = snapshot;
-
-    severity = worstSeverity(warnings);
-
-    const provenance =
-      current.kind === 'reading'
-        ? current.provenance
-        : outlook.kind === 'forecast'
-          ? outlook.provenance
-          : null;
-
-    // Exactly what the model is shown is exactly what the gate verifies.
-    //
-    // Provenance is IN here, not just on the UI line. The model naturally
-    // wants to say "as of 16:15", and without the issue time in the fact set
-    // a perfectly true statement is rejected as an invented number.
-    facts = {
-      place: {
-        name: resolved.name,
-        district: resolved.admin2 ?? null,
-        state: resolved.admin1 ?? null,
-      },
-      source: provenance
+/**
+ * The standing query, checked before it is trusted.
+ *
+ * It arrives from a browser or a stored Telegram session. Nothing in it is
+ * used as a weather value: the place is re-resolved server-side from its
+ * words, the severity can only make the gate stricter, and anything
+ * malformed is dropped rather than half-used.
+ */
+function readStanding(raw: StandingQuery | null): StandingQuery | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Partial<StandingQuery>;
+  const window = readWindow(s.timeWindow) ?? { kind: 'now' };
+  return {
+    place: typeof s.place === 'string' && s.place.trim() ? s.place.trim().slice(0, 80) : null,
+    resolvedPlace: s.resolvedPlace ?? null,
+    intent: s.intent === 'forecast' || s.intent === 'warning' || s.intent === 'history' ? s.intent : 'current',
+    timeWindow: window,
+    variable:
+      s.variable === 'temperature' || s.variable === 'rain' || s.variable === 'wind' || s.variable === 'humidity'
+        ? s.variable
+        : 'all',
+    setAt: typeof s.setAt === 'string' ? s.setAt : new Date(0).toISOString(),
+    lang: readTurnLanguage(s.lang),
+    requestedLang: readTurnLanguage(s.requestedLang),
+    pending:
+      s.pending && typeof s.pending === 'object'
         ? {
-            name: provenance.source,
-            issuedAt: provenance.issuedAt,
-            basis: provenance.timeBasis,
+            intent: s.pending.intent ?? 'current',
+            timeWindow: readWindow(s.pending.timeWindow) ?? { kind: 'now' },
+            variable: s.pending.variable ?? 'all',
           }
         : null,
-      current:
-        current.kind === 'reading'
-          ? {
-              condition: conditionFor(current.conditionCode)?.[chrome] ?? null,
-              measurements: current.measurements,
-            }
-          : { unavailable: current.statement[chrome] },
-      outlook:
-        outlook.kind === 'forecast'
-          ? { days: outlook.days, units: outlook.units }
-          : { unavailable: outlook.statement[chrome] },
-      // Warnings belong in the fact set, not just in `severity`: asked "is
-      // there a warning?" a model that cannot see them says no while five
-      // are in force.
-      warnings: warningFacts(warnings, chrome),
-    };
+    event: s.event && typeof s.event.start === 'string' && !Number.isNaN(Date.parse(s.event.start)) ? { start: s.event.start } : null,
+    severity:
+      s.severity === 'watch' || s.severity === 'alert' || s.severity === 'warning' || s.severity === 'none'
+        ? s.severity
+        : 'unknown',
+  };
+}
 
-    places.push(resolved.name);
-    if (resolved.admin1) places.push(resolved.admin1);
-    if (resolved.admin2) places.push(resolved.admin2);
-
-    if (provenance) {
-      grounding = { place: resolved, provenance, severity, facts };
+function readWindow(raw: unknown): TimeWindow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = raw as Record<string, unknown>;
+  const int = (v: unknown, lo: number, hi: number) =>
+    typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi ? v : null;
+  switch (w.kind) {
+    case 'now':
+      return { kind: 'now' };
+    case 'day': {
+      const offset = int(w.offset, -3650, 16);
+      return offset === null ? null : { kind: 'day', offset };
     }
+    case 'range': {
+      const days = int(w.days, 1, 16);
+      return days === null ? null : { kind: 'range', days };
+    }
+    case 'past': {
+      const days = int(w.days, 1, 31);
+      return days === null ? null : { kind: 'past', days };
+    }
+    case 'pastHours': {
+      const hours = int(w.hours, 1, 72);
+      return hours === null ? null : { kind: 'pastHours', hours };
+    }
+    case 'date':
+      return typeof w.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(w.date) ? { kind: 'date', date: w.date } : null;
+    case 'lastEvent':
+      return typeof w.before === 'string' && !Number.isNaN(Date.parse(w.before))
+        ? { kind: 'lastEvent', before: w.before }
+        : { kind: 'lastEvent' };
+    default:
+      return null;
+  }
+}
 
-    nextStanding = {
-      place,
-      resolvedPlace: resolved,
-      intent,
-      timeWindow,
-      variable,
-      setAt: new Date().toISOString(),
-    };
-  } else if (standing?.place && !wantsHere) {
-    // Ungrounded turn still carries the standing place, so the gate can tell
-    // a legitimate reference from an invented one.
-    places.push(standing.place);
-    if (standing.resolvedPlace?.name) places.push(standing.resolvedPlace.name);
-    if (standing.resolvedPlace?.admin1) places.push(standing.resolvedPlace.admin1);
+/* ------------------------------------------------------------------ */
+/* The pipeline                                                        */
+/* ------------------------------------------------------------------ */
+
+export async function answerQuestion(input: AnswerInput, overrides: Partial<AnswerDeps> = {}): Promise<Answer> {
+  const deps: AnswerDeps = { ...REAL, ...overrides };
+  const started = Date.now();
+  const now = deps.now();
+  const today = todayInIndia(now);
+  const { question, history } = input;
+  const standing = readStanding(input.standing);
+
+  /* ---- understand the turn: what IS it? --------------------------- */
+
+  const ctx = { standing, today };
+  let parseLayer: 'pattern' | 'cache' | 'llm' = 'pattern';
+  let plan: Plan | null = understandLocally(question, ctx);
+
+  if (!plan) {
+    const lastUser = [...history].reverse().find((m) => m.role === 'user' && m.text !== question)?.text;
+    const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.text;
+    const classified = await deps.classify(question, ctx, { lastUser, lastAssistant });
+    parseLayer = classified?.cacheHit ? 'cache' : 'llm';
+    // Every provider out: ask what was meant. Never a geocode.
+    plan = classified?.plan ?? fallbackPlan(question);
   }
 
-  /* ---- render, then verify ---------------------------------------- */
+  /* ---- decide the language, before anything is written ------------ */
 
-  const context = boundContext(history, nextStanding, facts);
+  const previous = standing?.lang
+    ? { ...standing.lang, confidence: 'medium' as const, basis: 'context' as const }
+    : conversationLanguage(history.filter((m) => m.text !== question));
 
-  const fallback = facts
-    ? buildTemplate(facts, chrome)
-    : chrome === 'hi'
-      ? 'मैं मौसम के बारे में बता सकता हूँ। किस जगह का पूछना है?'
-      : 'I can help with the weather. Which place would you like?';
+  let turnLang: TurnLanguage = resolveTurnLanguage(question, {
+    assistant: input.assistant,
+    previous,
+    heard: input.heard ?? undefined,
+    fallback: input.lang,
+  });
 
-  const reply = await writeReply({
+  // A language asked for in words holds for the conversation. It beats the
+  // turn's own script — that is what asking for it means — and the setting,
+  // because it was said just now.
+  const requested = plan.act === 'language' ? plan.lang : (standing?.requestedLang ?? null);
+  if (requested) turnLang = { ...requested, confidence: 'high', basis: 'explicit' };
+
+  const tlang = templateLanguage(turnLang);
+  const chrome = chromeLanguage(turnLang);
+  const style = styleFor(turnLang);
+
+  /** The conversation carried forward, with this turn's language in it. */
+  const carry = (patch: Partial<StandingQuery> = {}): StandingQuery | null => {
+    const base = standing ?? (patch.place !== undefined || patch.pending ? emptyStanding(now) : null);
+    if (!base) {
+      // No conversation yet and nothing to start one with — except a
+      // language, which is worth remembering for the next short turn.
+      return {
+        ...emptyStanding(now),
+        lang: { code: turnLang.code, script: turnLang.script },
+        requestedLang: requested,
+        ...patch,
+      };
+    }
+    return {
+      ...base,
+      lang: { code: turnLang.code, script: turnLang.script },
+      requestedLang: requested,
+      ...patch,
+    };
+  };
+
+  /** What a conversation title is composed from, filled in as the turn is understood. */
+  const title: Omit<TitleInput, 'question' | 'lang'> = { place: null };
+
+  const reply = (
+    text: string,
+    extra: Partial<ChatReply> & { fromModel?: boolean; gate?: string } = {},
+  ): Answer => {
+    const { fromModel = false, gate = 'skipped', ...rest } = extra;
+    logQuery({
+      parseLayer,
+      cacheHit: parseLayer === 'cache',
+      latencyMs: Date.now() - started,
+      lang: `${turnLang.code}-${turnLang.script}`,
+      outcome: rest.needsLocation ? 'cannotParse' : 'answered',
+      act: plan!.act,
+      langBasis: turnLang.basis,
+    });
+    return {
+      reply: {
+        text,
+        lang: turnLang.code,
+        script: turnLang.script,
+        speakAs: speechLanguage(turnLang),
+        standing: rest.standing !== undefined ? rest.standing : carry(),
+        ...rest,
+        meta: {
+          parseLayer,
+          act: plan!.act,
+          fromModel,
+          gate,
+          latencyMs: Date.now() - started,
+          langBasis: turnLang.basis,
+          langConfidence: turnLang.confidence,
+        },
+      },
+      chrome,
+      title: {
+        question,
+        ...title,
+        lang: chrome,
+      },
+    };
+  };
+
+  /* ---- turns that need no weather --------------------------------- */
+
+  switch (plan.act) {
+    case 'language':
+      return reply(languageAck(tlang, language(plan.lang.code).native));
+
+    case 'outOfScope':
+      return reply(REDIRECT[tlang]);
+
+    case 'unclear':
+      return reply(plan.maybePlace ? unclearPlace(tlang, plan.maybePlace) : UNCLEAR[tlang]);
+
+    case 'social':
+    case 'about': {
+      const kind = plan.act === 'social' ? plan.kind : 'capabilities';
+      const template = socialReply(kind, tlang, history.length, standing?.place ? placeLabel(standing, turnLang.script) : null);
+      // Hindi, English and Hinglish have hand-written replies. The other
+      // five, and every "about" question, are written by the model — with no
+      // data and the gate watching for a stray number.
+      const templated = plan.act === 'social' && (turnLang.code === 'en' || turnLang.code === 'hi' || turnLang.code === 'mr');
+      if (templated) return reply(template);
+
+      const rendered = await deps.render({
+        question,
+        lang: input.lang,
+        answer: style,
+        context: boundContext(history, standing, null),
+        facts: null,
+        places: standing ? knownPlaces(standing) : [],
+        // Only ever stricter: a warning standing in the conversation still
+        // forbids "don't worry" on a turn that fetched nothing.
+        severity: standing?.severity ?? 'unknown',
+        gazetteer: GAZETTEER,
+        turn: [
+          plan.act === 'about'
+            ? 'The person is asking about a weather term or about Chaatak. Explain plainly.'
+            : 'This is small talk, not a weather question. Reply in one short, warm line.',
+        ],
+        fallback: template,
+      });
+      return reply(rendered.text, { fromModel: rendered.fromModel, gate: rendered.gate });
+    }
+  }
+
+  /* ---- a weather turn --------------------------------------------- */
+
+  const weatherPlan: WeatherPlan = plan;
+  title.intent = weatherPlan.intent;
+  title.timeWindow = weatherPlan.window;
+  title.variable = weatherPlan.variable;
+
+  /** What is waiting on a place, if the place does not come. */
+  const pending = {
+    intent: weatherPlan.intent,
+    timeWindow: stripCursor(weatherPlan.window),
+    variable: weatherPlan.variable,
+  };
+
+  /* ---- the place, only because this turn needs one --------------- */
+
+  let place: Location | null = null;
+  let spoken: string | null = null;
+  let fromDevice: { name: string; district: string | null } | undefined;
+
+  const ref = weatherPlan.place;
+  if (ref.kind === 'named') {
+    spoken = ref.text;
+  } else if (ref.kind === 'carried' && standing?.place) {
+    spoken = standing.place;
+  } else if (input.coords) {
+    // "here", or no place at all, and the person has agreed to share one.
+    const here = resolvePoint(input.coords.latitude, input.coords.longitude);
+    if ('kind' in here) return reply(here.statement[chrome], { standing: carry({ pending }) });
+    place = here;
+    fromDevice = { name: here.name, district: here.admin2 ?? null };
+  } else {
+    // The one place a location is asked for: a question that needs one and
+    // has none. The question is kept, so the place that comes next answers
+    // it rather than starting over.
+    return reply(ASK_FOR_LOCATION[tlang], { needsLocation: true, standing: carry({ pending }) });
+  }
+
+  if (!place && spoken) {
+    const resolved = await deps.resolvePlace(spoken);
+    if ('kind' in resolved) {
+      // An honest statement, and the question still waiting for a place.
+      title.place = spoken;
+      return reply(unknownPlace(spoken, tlang, resolved.statement), { standing: carry({ pending }) });
+    }
+    place = resolved;
+  }
+  if (!place) return reply(ASK_FOR_LOCATION[tlang], { needsLocation: true, standing: carry({ pending }) });
+
+  /*
+   * The place as this answer names it, in the answer's script — never
+   * switch script on the user, a label included. See `displayName`.
+   */
+  const label = displayName(place, turnLang.script, spoken);
+  title.place = label;
+
+  /* ---- fetch exactly what the question needs ---------------------- */
+
+  const placeToday = todayAt(place, now);
+  const snapshot = await deps.snapshot(place);
+  const severity = worstSeverity(snapshot.warnings);
+  const warnings = warningFacts(snapshot.warnings, chrome);
+
+  let outlook: Forecast | NoData = snapshot.outlook;
+  const reach = forecastReach(weatherPlan.window, placeToday);
+  if ((weatherPlan.intent === 'forecast' || weatherPlan.intent === 'current') && reach > SNAPSHOT_DAYS) {
+    outlook = await deps.forecast(place, Math.min(FORECAST_MAX_DAYS, reach));
+  }
+
+  let historyResult: HistoryResult | null = null;
+  if (weatherPlan.intent === 'history') {
+    historyResult = await fetchHistory(deps.history, place, weatherPlan.window, placeToday);
+  }
+
+  /* ---- the facts: what the model sees is what the gate verifies ---- */
+
+  const facts: TurnFacts = {
+    asked: { topic: weatherPlan.intent, variable: weatherPlan.variable, when: describeAsked(weatherPlan.window, placeToday) },
+    place: { name: place.name, district: place.admin2 ?? null, state: place.admin1 ?? null },
+    source: null,
+    warnings,
+  };
+
+  let provenance: Provenance | null = null;
+
+  if (historyResult) {
+    facts.history = historyFacts(historyResult, { timeZone: place.timezone, today: placeToday, now, lang: chrome });
+    const nature = historyNature(historyResult);
+    if (nature) facts.historyNature = nature;
+    if (historyResult.kind !== 'unavailable') provenance = historyResult.history.provenance;
+  } else {
+    facts.current = currentFacts(snapshot.current, chrome);
+    facts.outlook = outlookFacts(outlook, placeToday, chrome);
+    facts.focusDays = focusDates(outlook, weatherPlan.window, placeToday);
+    if (outlook.kind === 'forecast' && facts.focusDays.length === 0 && weatherPlan.intent === 'forecast') {
+      facts.horizonDays = outlook.days.length;
+    }
+    provenance = pickProvenance(weatherPlan, snapshot, outlook);
+  }
+
+  if (provenance) {
+    facts.source = {
+      name: provenance.source,
+      nature: provenance.nature ?? null,
+      issuedAt: provenance.issuedAt,
+      basis: provenance.timeBasis,
+    };
+  }
+
+  /* ---- render, then verify ----------------------------------------- */
+
+  // Severity from the catalogue, verbatim, in the answer's taxonomy — and the
+  // reply must OPEN with it. Hinglish reads the English taxonomy: its words
+  // are human-translated into two languages, never re-worded into a third.
+  const severityStrings =
+    severity === 'watch' || severity === 'alert' || severity === 'warning'
+      ? [severityWords(severity, chrome)]
+      : [];
+
+  const places = [
+    place.name,
+    place.admin1,
+    place.admin2,
+    label,
+    spoken,
+    weatherPlan.rejected,
+    ...(standing ? knownPlaces(standing) : []),
+  ].filter((p): p is string => Boolean(p));
+
+  const nextStanding = carry({
+    place: spoken ?? place.name,
+    resolvedPlace: place,
+    intent: weatherPlan.intent,
+    timeWindow: stripCursorIfPlaceChanged(weatherPlan, standing),
+    variable: weatherPlan.variable,
+    setAt: now.toISOString(),
+    pending: null,
+    event:
+      historyResult?.kind === 'lastRain' && historyResult.event
+        ? { start: historyResult.event.start }
+        : weatherPlan.intent === 'history' && weatherPlan.window.kind === 'lastEvent'
+          ? null
+          : samePlace(standing, spoken ?? place.name)
+            ? (standing?.event ?? null)
+            : null,
+    severity,
+  });
+
+  const fallback = weatherTemplate({ plan: weatherPlan, facts, lang: tlang, place: label, severity });
+
+  const rendered = await deps.render({
     question,
-    lang,
-    context,
-    facts,
+    lang: input.lang,
+    answer: style,
+    context: boundContext(history, nextStanding, facts as FactsSnapshot),
+    facts: facts as FactsSnapshot,
     places,
     severity,
+    severityStrings,
     gazetteer: GAZETTEER,
-    answer,
+    turn: turnNotes(weatherPlan, label, fromDevice),
     fallback,
   });
 
-  logQuery({
-    parseLayer: parseLayer as 'pattern' | 'llm',
-    cacheHit: false,
-    provider: reply.provider,
-    gate: reply.gate === 'skipped' ? undefined : (reply.gate as 'passed' | 'rejected'),
-    gateReason: reply.gateReason,
-    fellBackToTemplate: !reply.fromModel,
-    latencyMs: Date.now() - started,
-    lang,
-    outcome: 'answered',
-  });
+  const grounding: Grounding | undefined = provenance
+    ? { place, provenance, severity, facts: facts as FactsSnapshot }
+    : undefined;
 
-  return done({
-    text: reply.text,
-    lang,
+  return reply(rendered.text, {
     grounding,
     standing: nextStanding,
     snapshot,
     usedDeviceLocation: fromDevice,
-    meta: meta(reply.fromModel, reply.gate),
+    fromModel: rendered.fromModel,
+    gate: rendered.gate,
   });
 }
 
-/** The floor the system lands on when the model is out or the gate rejects. */
-function buildTemplate(facts: FactsSnapshot, lang: InterfaceLang): string {
-  const current = facts.current as
-    | { condition: string | null; measurements: { key: string; value: number; unit: string }[] }
-    | { unavailable: string };
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 
-  if ('unavailable' in current) return current.unavailable;
-
-  const temperature = current.measurements.find((m) => m.key === 'temperature');
-  const condition = current.condition;
-
-  if (!temperature) {
-    return condition ?? (lang === 'hi' ? 'जानकारी उपलब्ध नहीं है।' : 'No data available.');
-  }
-
-  return lang === 'hi'
-    ? `${condition ? condition + '। ' : ''}अभी तापमान ${temperature.value} ${temperature.unit} है।`
-    : `${condition ? condition + '. ' : ''}It is ${temperature.value} ${temperature.unit} right now.`;
+function emptyStanding(now: Date): StandingQuery {
+  return {
+    place: null,
+    resolvedPlace: null,
+    intent: 'current',
+    timeWindow: { kind: 'now' },
+    variable: 'all',
+    setAt: now.toISOString(),
+  };
 }
+
+/** Every name the conversation has legitimately used for its place. */
+function knownPlaces(standing: StandingQuery): string[] {
+  return [standing.place, standing.resolvedPlace?.name, standing.resolvedPlace?.admin1, standing.resolvedPlace?.admin2]
+    .filter((p): p is string => Boolean(p));
+}
+
+/** The conversation's place, named the way an answer in this script names it. */
+function placeLabel(standing: StandingQuery, script: ScriptCode): string {
+  if (standing.resolvedPlace?.name) return displayName(standing.resolvedPlace, script, standing.place);
+  return standing.place ?? '';
+}
+
+/**
+ * What an answer calls its place.
+ *
+ * Latin answers use the canonical name — "Ghaziabad", not the "ghaziabad"
+ * someone typed in a hurry. Devanagari answers use the person's own
+ * Devanagari words when they wrote them; otherwise the hand-written Hindi
+ * name, then the gazetteer's current Devanagari name, and only then the Latin
+ * one. No name is ever produced by transliteration.
+ */
+function displayName(place: Location, script: ScriptCode, spoken: string | null): string {
+  if (script !== 'Deva') return place.name;
+  if (spoken && /[ऀ-ॿ]/.test(spoken)) return spoken;
+  return HINDI_NAME.get(place.name.toLowerCase()) ?? devanagariName(place.name) ?? place.name;
+}
+
+function samePlace(standing: StandingQuery | null, place: string): boolean {
+  return Boolean(standing?.place) && standing!.place!.toLowerCase() === place.toLowerCase();
+}
+
+/** A waiting question does not carry an event cursor: that belongs to a place. */
+function stripCursor(window: TimeWindow): TimeWindow {
+  return window.kind === 'lastEvent' ? { kind: 'lastEvent' } : window;
+}
+
+function stripCursorIfPlaceChanged(plan: WeatherPlan, standing: StandingQuery | null): TimeWindow {
+  if (plan.window.kind !== 'lastEvent') return plan.window;
+  const changed = plan.place.kind === 'named' && !samePlace(standing, plan.place.text);
+  return changed ? { kind: 'lastEvent' } : plan.window;
+}
+
+/** How many days of forecast a window needs, counting today. */
+function forecastReach(window: TimeWindow, today: string): number {
+  switch (window.kind) {
+    case 'day':
+      return window.offset + 1;
+    case 'range':
+      return window.days;
+    case 'date': {
+      const days = Math.round((Date.parse(`${window.date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+      return days + 1;
+    }
+    default:
+      return 1;
+  }
+}
+
+/**
+ * The provenance line for a turn: what it actually reported.
+ *
+ * A warning question cites IMD's bulletin, not the model that supplied the
+ * temperature beside it; a forecast question cites the forecast.
+ */
+function pickProvenance(plan: WeatherPlan, snapshot: WeatherSnapshot, outlook: Forecast | NoData): Provenance | null {
+  if (plan.intent === 'warning') {
+    const w = snapshot.warnings;
+    if (Array.isArray(w) && w[0]) return w[0].provenance;
+    if (!Array.isArray(w) && w.kind === 'noWarning') {
+      return {
+        source: w.source,
+        endpoint: w.endpoint,
+        issuedAt: w.issuedAt ?? w.checkedAt,
+        timeBasis: w.issuedAt ? w.timeBasis : 'valid',
+        nature: 'bulletin',
+      };
+    }
+  }
+  if (plan.intent === 'forecast' && outlook.kind === 'forecast') return outlook.provenance;
+  if (snapshot.current.kind === 'reading') return snapshot.current.provenance;
+  if (outlook.kind === 'forecast') return outlook.provenance;
+  return null;
+}
+
+/** What the model is told about this turn, in a line each. */
+function turnNotes(
+  plan: WeatherPlan,
+  place: string,
+  fromDevice: { name: string; district: string | null } | undefined,
+): string[] {
+  const notes: string[] = [];
+  if (plan.turn === 'followup') notes.push('A follow-up: it continues the previous question.');
+  if (plan.turn === 'correction') {
+    notes.push(
+      plan.rejected
+        ? `The person corrected the place: ${place}, not ${plan.rejected}. Acknowledge it in a few words.`
+        : `The person corrected the place to ${place}. Acknowledge it in a few words.`,
+    );
+  }
+  if (plan.turn === 'place') notes.push(`The person gave the place ${place} for the question being discussed.`);
+  if (fromDevice) notes.push(`The place was taken from the device's location: say it is for ${place}.`);
+  if (plan.window.kind === 'lastEvent' && plan.window.before) {
+    notes.push('They asked about the rain BEFORE the one already mentioned; DATA.history holds that earlier one.');
+  }
+  return notes;
+}
+
+export type { TemplateLang };

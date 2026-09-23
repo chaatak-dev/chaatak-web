@@ -52,6 +52,14 @@ const THRESHOLDS: Record<ValueNature, { ageing: number; stale: number }> = {
   model: { ageing: 60, stale: 180 },
   observation: { ageing: 90, stale: 240 },
   bulletin: { ageing: 12 * 60, stale: 36 * 60 },
+  /*
+   * The past is never "now", whatever its age, so the two historical natures
+   * are held to the strictest thresholds there are. Nothing should ask
+   * whether a history is current — these exist so that if something does,
+   * the answer is the safe one.
+   */
+  archivedForecast: { ageing: 60, stale: 180 },
+  reanalysis: { ageing: 60, stale: 180 },
 };
 
 /** What a value with no declared nature is held to. The strictest of them. */

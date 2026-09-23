@@ -16,7 +16,7 @@
  * script on someone is the one thing the language rules never allow.
  */
 
-import type { TimeWindow, Variable } from '../parse/types';
+import type { Intent, TimeWindow, Variable } from '../parse/types';
 import type { InterfaceLang } from '../i18n/languages';
 
 /** Longer than this and a sidebar row truncates mid-word anyway. */
@@ -31,19 +31,23 @@ const VARIABLE_WORD: Record<Variable, { hi: string; en: string } | null> = {
 };
 
 const DAY_WORD: Record<number, { hi: string; en: string }> = {
+  [-2]: { hi: 'परसों', en: 'day before yesterday' },
+  [-1]: { hi: 'कल', en: 'yesterday' },
   0: { hi: 'आज', en: 'today' },
   1: { hi: 'कल', en: 'tomorrow' },
   2: { hi: 'परसों', en: 'day after' },
 };
 
 const WARNING_WORD = { hi: 'चेतावनी', en: 'warning' };
+/** "When did it last rain" names itself better than any composed label. */
+const LAST_RAIN_WORD = { hi: 'पिछली बारिश', en: 'last rain' };
 
 export type TitleInput = {
   /** The question, verbatim. The fallback, and the only source of truth. */
   question: string;
   /** The resolved place name, when the turn resolved one. */
   place?: string | null;
-  intent?: 'current' | 'forecast' | 'warning';
+  intent?: Intent;
   timeWindow?: TimeWindow;
   variable?: Variable;
   lang: InterfaceLang;
@@ -69,6 +73,8 @@ export function conversationTitle(input: TitleInput): string {
 
   if (input.intent === 'warning') {
     parts.push(WARNING_WORD[lang]);
+  } else if (input.timeWindow?.kind === 'lastEvent') {
+    parts.push(LAST_RAIN_WORD[lang]);
   } else {
     const variable = input.variable ? VARIABLE_WORD[input.variable] : null;
     if (variable) parts.push(variable[lang]);
@@ -89,13 +95,20 @@ function dayWord(
   lang: InterfaceLang,
 ): string | null {
   if (!window) return null;
-  // "now" adds nothing: every unqualified question is about now.
-  if (window.kind === 'day' && window.offset > 0) {
+  // "now" and "today" add nothing: every unqualified question is about now.
+  if (window.kind === 'day' && window.offset !== 0) {
     return DAY_WORD[window.offset]?.[lang] ?? null;
   }
   if (window.kind === 'range') {
     return lang === 'hi' ? `${window.days} दिन` : `${window.days} days`;
   }
+  if (window.kind === 'past') {
+    return lang === 'hi' ? `पिछले ${window.days} दिन` : `last ${window.days} days`;
+  }
+  if (window.kind === 'pastHours') {
+    return lang === 'hi' ? `पिछले ${window.hours} घंटे` : `last ${window.hours} hours`;
+  }
+  if (window.kind === 'date') return window.date;
   return null;
 }
 

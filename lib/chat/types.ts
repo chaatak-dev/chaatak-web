@@ -7,6 +7,8 @@
  * verified that turn against.
  */
 
+import type { TurnLanguage } from '../i18n/detect';
+import type { ScriptCode } from '../i18n/languages';
 import type { Intent, TimeWindow, Variable } from '../parse/types';
 import type { SpeechLang } from '../speech/types';
 import type { Location, Provenance, Severity } from '../weather/types';
@@ -33,8 +35,14 @@ export type Message = {
   id: string;
   role: Role;
   text: string;
-  /** The script this turn was written in. Mirrored back, never switched. */
+  /** The language this turn was written in. Mirrored back, never switched. */
   lang: SpeechLang;
+  /**
+   * The script, where it is not the language's own: Hinglish is `hi` in
+   * Latin. Drives the `lang` attribute (hi-Latn) and which voice reads it.
+   * Absent means the language's own script.
+   */
+  script?: ScriptCode;
   at: string;
   /** Only on turns that reported values. Absent on pure conversation. */
   grounding?: Grounding;
@@ -66,6 +74,39 @@ export type StandingQuery = {
   timeWindow: TimeWindow;
   variable: Variable;
   setAt: string;
+
+  /*
+   * Everything below is optional, because this shape is stored — in the
+   * browser between turns and in Postgres for a Telegram chat — and a record
+   * written before these existed must still read.
+   */
+
+  /** The conversation's language so far, which a short reaction inherits. */
+  lang?: Pick<TurnLanguage, 'code' | 'script'> | null;
+  /**
+   * A language the person asked for in words ("Hindi mein batao"). Holds like
+   * an explicit setting until they ask for another, and only while the
+   * assistant preference is on auto.
+   */
+  requestedLang?: Pick<TurnLanguage, 'code' | 'script'> | null;
+  /**
+   * A question that could not be answered for want of a place: what it asked,
+   * so the place that arrives next completes it instead of starting over.
+   */
+  pending?: { intent: Intent; timeWindow: TimeWindow; variable: Variable } | null;
+  /**
+   * The last rain event reported at the standing place — the bound "and
+   * before that?" searches behind. Belongs to that place and is dropped when
+   * the place changes.
+   */
+  event?: { start: string } | null;
+  /**
+   * The loudest severity in force at the standing place when it was last
+   * fetched. Only ever makes the gate stricter on a turn that fetched
+   * nothing — a client that forged it could only make its own replies more
+   * cautious.
+   */
+  severity?: Severity | 'unknown';
 };
 
 /** A history entry as sent to the model: role and words, nothing else. */

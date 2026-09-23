@@ -97,6 +97,7 @@ const BASIS: Record<Provenance['timeBasis'] | 'checked', StringKey> = {
   issued: 'provenance.issued',
   updated: 'provenance.updated',
   valid: 'provenance.valid',
+  through: 'provenance.through',
   checked: 'provenance.checked',
 };
 
@@ -104,6 +105,8 @@ const NATURE: Record<NonNullable<Provenance['nature']>, StringKey> = {
   model: 'provenance.model',
   observation: 'provenance.observation',
   bulletin: 'provenance.bulletin',
+  archivedForecast: 'provenance.archivedForecast',
+  reanalysis: 'provenance.reanalysis',
 };
 
 /**
@@ -120,9 +123,11 @@ export function provenanceLine(
 ): string {
   const t = tr(lang);
   const nature = provenance.nature ? ` · ${t(NATURE[provenance.nature])}` : '';
-  return i(
-    `${provenance.source}${nature} · ${t(BASIS[provenance.timeBasis])} ${formatStamp(provenance.issuedAt, timeZone)}`,
-  );
+  const stamp = formatStamp(provenance.issuedAt, timeZone);
+  const word = t(BASIS[provenance.timeBasis]);
+  // The language's word order: "20:00 IST तक का आँकड़ा", not the reverse.
+  const when = lang === 'hi' && provenance.timeBasis === 'through' ? `${stamp} ${word}` : `${word} ${stamp}`;
+  return i(`${provenance.source}${nature} · ${when}`);
 }
 
 /** For an absence: when we asked, which is all there is to cite. */

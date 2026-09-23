@@ -17,7 +17,8 @@
 
 import { firstName, greeting } from '../i18n/greetings';
 import { isLanguagePreference, type LanguagePreferences } from '../i18n/preferences';
-import { replyLanguage, type InterfaceLang, type LanguageCode } from '../i18n/languages';
+import type { InterfaceLang, LanguageCode } from '../i18n/languages';
+import { replyLanguage } from '../i18n/detect';
 import { translate, type StringKey, type Vars } from '../i18n/strings';
 import { districtKey } from '../accounts/store';
 import {

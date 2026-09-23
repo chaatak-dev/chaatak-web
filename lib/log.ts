@@ -27,6 +27,10 @@ export type QueryLog = {
   latencyMs: number;
   lang: string;
   outcome: 'answered' | 'noData' | 'cannotParse' | 'error';
+  /** What the turn was: weather, social, language, about, outOfScope, unclear. */
+  act?: string;
+  /** What decided the answer's language: script, lexicon, context, explicit… */
+  langBasis?: string;
 };
 
 const counters = {

@@ -130,6 +130,8 @@ export function answerFor(
     reply: {
       text,
       lang: chrome,
+      script: chrome === 'hi' ? 'Deva' : 'Latn',
+      speakAs: chrome,
       standing: snap
         ? {
             place: snap.place.name,
@@ -155,7 +157,15 @@ export function answerFor(
             },
           }
         : {}),
-      meta: { parseLayer: 'pattern', fromModel: false, gate: 'skipped', latencyMs: 1 },
+      meta: {
+        parseLayer: 'pattern',
+        act: 'weather',
+        fromModel: false,
+        gate: 'skipped',
+        latencyMs: 1,
+        langBasis: 'script',
+        langConfidence: 'high',
+      },
     },
   };
 }

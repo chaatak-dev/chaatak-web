@@ -189,9 +189,16 @@ export const STRINGS = {
   'provenance.updated': { hi: 'अपडेट', en: 'Updated' },
   'provenance.valid': { hi: 'मान्य', en: 'Valid' },
   'provenance.checked': { hi: 'जाँचा', en: 'Checked' },
+  /* A past series ends somewhere; nothing about it was "issued". */
+  'provenance.through': { hi: 'तक का आँकड़ा', en: 'Data to' },
   'provenance.model': { hi: 'मॉडल', en: 'model' },
   'provenance.observation': { hi: 'मापा गया', en: 'observed' },
   'provenance.bulletin': { hi: 'बुलेटिन', en: 'bulletin' },
+  /* Modelled pasts, named apart: neither is a rain gauge. */
+  'provenance.archivedForecast': { hi: 'मॉडल रिकॉर्ड', en: 'model archive' },
+  'provenance.reanalysis': { hi: 'पुनर्विश्लेषण', en: 'reanalysis' },
+  /* The accessible sentence the provenance line is read as. */
+  'provenance.sourceLabel': { hi: 'स्रोत', en: 'Source' },
 
   /* ---- the microphone -------------------------------------------- */
   'mic.idle': { hi: 'बोलकर पूछें', en: 'Ask by voice' },

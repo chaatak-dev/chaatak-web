@@ -203,7 +203,7 @@
   color: var(--sev, var(--text-soft));
 }
 
-.provenance__endpoint {
+.provenance__when {
   font-variant-numeric: tabular-nums;
 }
 

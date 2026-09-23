@@ -7,8 +7,9 @@
  * So every relaxation below is paired with something that can refuse.
  */
 
-import { index, type GazetteerEntry } from './index';
+import { index, recordedNames, type GazetteerEntry } from './index';
 import { normalise, scriptOf } from './normalise';
+import { romanise } from './romanise';
 
 export type Match = {
   entry: GazetteerEntry;
@@ -190,4 +191,36 @@ export function matchPlace(query: string): Match | null {
   }
 
   return { entry: hits[0], how: 'fuzzy', distance: bestDistance };
+}
+
+/**
+ * A place's current name in Devanagari: Lucknow → लखनऊ, Delhi → दिल्ली.
+ *
+ * Chosen from the names Wikidata records for the place — never produced by
+ * transliteration, which is how जयपुर once became Jayapura. But the recorded
+ * names are not all current: they include the region (Lucknow → अवध), the old
+ * name (Delhi → इन्द्रप्रस्थ, Mumbai → बॉम्बे) and a nickname (Pune → "दक्कन की
+ * रानी"). So the one used is the one that SOUNDS like the canonical name — its
+ * romanisation nearest the Latin — and none at all if nothing is near. The
+ * romaniser only compares names here; it never produces one.
+ */
+export function devanagariName(name: string): string | null {
+  const key = normalise(name);
+  if (!key) return null;
+  const words = name.trim().split(/\s+/).length;
+
+  let best: string | null = null;
+  let bestDistance = Infinity;
+  for (const form of recordedNames(name)) {
+    if (scriptOf(form) !== 'deva' || /[,(]/.test(form)) continue;
+    if (form.trim().split(/\s+/).length !== words) continue;
+    const distance = editDistance(normalise(romanise(form)), key, 8);
+    if (distance < bestDistance) {
+      best = form;
+      bestDistance = distance;
+    }
+  }
+  // Near means within about half the name: लखनऊ is "lakhanau" against
+  // "lucknow"; अवध, "avadh", is never nearer than that.
+  return best !== null && bestDistance <= Math.max(2, Math.ceil(key.length * 0.6)) ? best : null;
 }

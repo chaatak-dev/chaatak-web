@@ -4,18 +4,19 @@ import assert from 'node:assert/strict';
 import {
   LANGUAGES,
   TAXONOMY_FALLBACK,
-  answerStyle,
   bcp47,
   detectScript,
   interfaceLanguage,
   isLanguageCode,
   language,
-  replyLanguage,
   scriptOf,
   taxonomyIsBorrowed,
   taxonomyLanguage,
 } from './languages';
 import type { LanguageCode, ScriptCode } from './languages';
+// The per-turn decision moved to the detector; these tests hold its
+// question-on-its-own behaviour to exactly what it was.
+import { answerStyle, replyLanguage } from './detect';
 
 /**
  * Seven languages of speech, two of taxonomy.

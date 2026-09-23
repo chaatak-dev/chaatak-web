@@ -17,14 +17,38 @@ export type Intent =
   /** A future day or range. */
   | 'forecast'
   /** Warnings in force. */
-  | 'warning';
+  | 'warning'
+  /**
+   * What already happened: "when did it last rain", "kal baarish hui thi?".
+   *
+   * A first-class intent rather than a time window on `current`, because the
+   * failure it exists for was exactly that collapse — a past-tense question
+   * answered with today's precipitation, which was true, sourced, and the
+   * answer to a different question.
+   */
+  | 'history';
 
 export type TimeWindow =
   | { kind: 'now' }
-  /** Whole days from today. 0 = आज, 1 = कल, 2 = परसों. */
+  /**
+   * Whole days from today, in the place's own zone. 0 = आज, 1 = कल
+   * (tomorrow), 2 = परसों — and, for a past-tense question, -1 = कल
+   * (yesterday), -2 = the day before.
+   */
   | { kind: 'day'; offset: number }
   /** A span starting today, e.g. इस हफ़्ते. */
-  | { kind: 'range'; days: number };
+  | { kind: 'range'; days: number }
+  /** The N complete days before today: "last week", "pichhle 7 din". */
+  | { kind: 'past'; days: number }
+  /** The last N hours up to the latest complete hour: "last 24 hours". */
+  | { kind: 'pastHours'; hours: number }
+  /** One calendar date, YYYY-MM-DD, in the place's zone: "15 August". */
+  | { kind: 'date'; date: string }
+  /**
+   * The most recent rain event, optionally one that ended before an instant —
+   * which is how "and before that?" walks back through them.
+   */
+  | { kind: 'lastEvent'; before?: string };
 
 export type Variable =
   | 'all'

@@ -70,6 +70,8 @@ import type {
   DistrictId,
   Forecast,
   ForecastDay,
+  History,
+  HistoryRequest,
   Location,
   Measurement,
   MeasurementKey,
@@ -608,6 +610,17 @@ export const imdSource: WeatherSource = {
 
   async getForecast(location: Location, days: number): Promise<Forecast | NoData> {
     return openMeteo.getForecast(location, days);
+  },
+
+  /**
+   * The past comes from Open-Meteo's records too, under Open-Meteo's name.
+   *
+   * IMD's station endpoint serves the latest row and nothing before it, so it
+   * has no past to offer; and a gridded model archive is never passed off as
+   * a station record — the provenance says archivedForecast or reanalysis.
+   */
+  async getHistory(location: Location, request: HistoryRequest): Promise<History | NoData> {
+    return openMeteo.getHistory(location, request);
   },
 
   async getWarnings(district: DistrictId): Promise<Warning[] | NoWarning | NoData> {

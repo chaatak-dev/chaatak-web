@@ -4,9 +4,21 @@
  * nothing" is provenance as much as a reading is.
  *
  * This is a design element, not fine print: a 2px rule in the active severity
- * colour, then the source, the endpoint, and the upstream timestamp. The rule
- * carries the severity down into the citation, so severity stays legible even
- * from the bottom of a block.
+ * colour, then the source, what kind of value it is, and the upstream
+ * timestamp. The rule carries the severity down into the citation, so
+ * severity stays legible even from the bottom of a block.
+ *
+ * ONE TEXT, READ BY EVERYONE. The line used to put its words in an
+ * `aria-hidden` span and a sentence in an `aria-label` on the paragraph — and
+ * `aria-label` is prohibited on a paragraph, so screen readers dropped it and
+ * the citation under every number was silent. The visible words are now the
+ * accessible words. The middle dots are decoration and hidden; a comma that
+ * only a screen reader hears stands in for each, so the line is read as a
+ * sentence rather than as "dot model dot".
+ *
+ * The mark is decorative, drawn inline and hidden from assistive technology.
+ * Nothing here can put markup into text: every piece is a React child, never
+ * a string built from HTML.
  */
 
 'use client';
@@ -15,11 +27,14 @@ import type { TimeBasis, ValueNature } from '@/lib/weather/types';
 import { formatStamp } from '@/lib/format';
 import { useApp } from './AppState';
 import type { StringKey } from '@/lib/i18n/strings';
+import type { InterfaceLang } from '@/lib/i18n/languages';
 
 const NATURE_KEY: Record<ValueNature, StringKey> = {
   model: 'provenance.model',
   observation: 'provenance.observation',
   bulletin: 'provenance.bulletin',
+  archivedForecast: 'provenance.archivedForecast',
+  reanalysis: 'provenance.reanalysis',
 };
 
 /** `unknown` is for absence states, where no severity has been established. */
@@ -60,12 +75,26 @@ const BASIS_KEY: Record<StampBasis, StringKey> = {
   issued: 'provenance.issued',
   updated: 'provenance.updated',
   valid: 'provenance.valid',
+  through: 'provenance.through',
   checked: 'provenance.checked',
 };
 
+/**
+ * "Updated 20:30 IST", or — where the language puts it after — "20:30 IST
+ * तक का आँकड़ा". Word order is the language's, not the template's.
+ */
+export function stampPhrase(word: string, stamp: string, basis: StampBasis, lang: InterfaceLang): string {
+  return lang === 'hi' && basis === 'through' ? `${stamp} ${word}` : `${word} ${stamp}`;
+}
+
 function SourceMark() {
   return (
-    <svg className="provenance__mark" viewBox="0 0 12 12" aria-hidden="true">
+    <svg
+      className="provenance__mark"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      focusable="false"
+    >
       <circle cx="6" cy="6" r="1.6" fill="currentColor" />
       <path
         d="M2.9 3.3a4.4 4.4 0 0 0 0 5.4M9.1 3.3a4.4 4.4 0 0 1 0 5.4"
@@ -78,11 +107,23 @@ function SourceMark() {
   );
 }
 
+/** A middle dot for the eye, a comma for the ear. */
+function Separator() {
+  return (
+    <>
+      <span className="provenance__sep" aria-hidden="true">
+        ·
+      </span>
+      <span className="sr-only">, </span>
+    </>
+  );
+}
+
 type Props = {
   source: string;
   /**
    * What kind of value this is — a model's output, an instrument's reading,
-   * or an issued bulletin.
+   * an issued bulletin, or a modelled past.
    *
    * This slot used to hold the API path. A visitor can act on "model"; nobody
    * can act on `/api/v1/current_wx`, and citing our own plumbing in a
@@ -106,33 +147,25 @@ export function Provenance({
   timeZone,
   severity = 'none',
 }: Props) {
-  const { t } = useApp();
+  const { t, languages } = useApp();
   const stamp = formatStamp(timestamp, timeZone);
-  const word = t(BASIS_KEY[basis]);
-
+  const when = stampPhrase(t(BASIS_KEY[basis]), stamp, basis, languages.ui);
   const natureWord = nature ? t(NATURE_KEY[nature]) : '';
 
-  const label = natureWord
-    ? `${source}, ${natureWord}, ${word} ${stamp}`
-    : `${source}, ${word} ${stamp}`;
-
   return (
-    <p
-      className="provenance"
-      style={{ ['--sev' as string]: RULE_COLOUR[severity] }}
-      aria-label={label}
-    >
+    <p className="provenance" style={{ ['--sev' as string]: RULE_COLOUR[severity] }}>
       <SourceMark />
-      <span aria-hidden="true" className="provenance__text">
+      <span className="provenance__text">
+        <span className="sr-only">{t('provenance.sourceLabel')}: </span>
         <span className="provenance__source">{source}</span>
         {natureWord && (
           <>
-            <span className="provenance__sep">·</span>
-            <span className="provenance__endpoint">{natureWord}</span>
+            <Separator />
+            <span className="provenance__nature">{natureWord}</span>
           </>
         )}
-        <span className="provenance__sep">·</span>
-        {word} {stamp}
+        <Separator />
+        <span className="provenance__when">{when}</span>
       </span>
     </p>
   );

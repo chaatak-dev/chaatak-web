@@ -18,7 +18,7 @@
  */
 
 import { detectScript, type ScriptCode } from '../i18n/languages';
-import { checkAdvice } from './advice';
+import { checkAdvice, hasUnnegatedReassurance, isLoud } from './advice';
 import { buildFacts, normalisePlace, verifyRender, type GateRejection } from './gate';
 import { MEASUREMENT_WORDS, extractNumbers, findSpelledOutValue, normaliseDigits } from './numbers';
 import type { FactsSnapshot } from '../chat/types';
@@ -128,6 +128,22 @@ export function verifyReply(text: string, input: ChatGateInput): ChatVerdict {
 
   // 3. Ungrounded. No values were fetched, so the numeral rule narrows to
   //    weather claims specifically, but everything else still applies.
+
+  // A turn that fetched nothing can still be the one that says "don't worry":
+  // "ohh really?" after an answer that opened with a red warning. When the
+  // conversation's place has a loud warning standing, reassurance is refused
+  // here exactly as it is on a grounded turn.
+  if (isLoud(input.severity)) {
+    const marker = hasUnnegatedReassurance(text);
+    if (marker) {
+      return {
+        ok: false,
+        reason: 'contradictsWarning',
+        detail: `unnegated reassurance "${marker}" with a ${input.severity} standing in the conversation`,
+      };
+    }
+  }
+
   const spelled = findSpelledOutValue(text);
   if (spelled !== null) {
     return {

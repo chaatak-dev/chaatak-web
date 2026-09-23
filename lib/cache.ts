@@ -38,6 +38,17 @@ export const TTL = {
    * asking the same thing rather than to remember anything for long.
    */
   parse: 10 * 60 * 1000,
+  /**
+   * The recent past, hour by hour. Its newest end advances every hour, so
+   * holding it longer than that would stop "the last 24 hours" moving.
+   */
+  history: 20 * 60 * 1000,
+  /**
+   * Reanalysis of days long gone. Last April does not change, but the
+   * reanalysis is still being filled in for the most recent days, so a day
+   * rather than forever.
+   */
+  archive: 24 * 60 * 60 * 1000,
 } as const;
 
 /**

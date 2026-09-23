@@ -23,6 +23,11 @@ import type { Severity } from '../weather/types';
 
 /** Severities at which reassurance is forbidden outright. */
 const LOUD: ReadonlySet<string> = new Set(['alert', 'warning']);
+
+/** True for an orange or red warning: the level at which "it's fine" is never said. */
+export function isLoud(severity: Severity | 'unknown'): boolean {
+  return LOUD.has(severity);
+}
 /** Severities at which the severity string must at least be present. */
 const NAMED: ReadonlySet<string> = new Set(['watch', 'alert', 'warning']);
 

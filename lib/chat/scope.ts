@@ -35,10 +35,15 @@ export const SCOPE_RULES = [
   'false for term explanations, questions about Chaatak, and small talk.',
 ].join('\n');
 
-/** One friendly line, no lecture, no refusal boilerplate. */
+/**
+ * One friendly line, no lecture, no refusal boilerplate. Hinglish has its
+ * own, because a Hinglish conversation turned away in English is the
+ * "randomly became English" failure in its politest form.
+ */
 export const REDIRECT = {
   hi: 'मैं तो मौसम के लिए हूँ — ये मुझसे न पूछिए। मौसम का कुछ पूछना हो तो बताइए।',
   en: "I'm just the weather — that one's outside what I do. Ask me about the weather instead.",
+  hinglish: 'Main to sirf mausam ke liye hoon — yeh mujhse mat poochiye. Mausam ka kuch poochna ho to bataiye.',
 };
 
 /**
@@ -54,4 +59,5 @@ export const REDIRECT = {
 export const ASK_FOR_LOCATION = {
   hi: 'किस जगह का बताऊँ? जगह का नाम लिखें, या अपनी जगह इस्तेमाल करने दें।',
   en: 'Which place should I use? Type a place name, or let me use your location.',
+  hinglish: 'Kis jagah ka bataun? Jagah ka naam likhiye, ya apni location use karne dijiye.',
 };

@@ -14,14 +14,14 @@ import { providers } from '../llm/index';
 import { logGateRejection } from '../log';
 import { verifyReply } from './chat-gate';
 import type { ChatContext, FactsSnapshot } from '../chat/types';
-import type { AnswerStyle } from '../i18n/languages';
+import type { AnswerStyle } from '../i18n/detect';
 import type { SpeechLang } from '../speech/types';
 import type { Severity } from '../weather/types';
 
 export type ReplyRequest = {
   question: string;
   lang: SpeechLang;
-  /** Which language and script to write in, derived from the question. */
+  /** Which language and script to write in, decided before generation. */
   answer: AnswerStyle;
   context: ChatContext;
   facts: FactsSnapshot | null;
@@ -29,6 +29,12 @@ export type ReplyRequest = {
   severity: Severity | 'unknown';
   severityStrings?: string[];
   gazetteer?: Set<string>;
+  /**
+   * What this turn is, in a line or two for the model: what was asked, and
+   * how it relates to the conversation. Decided by the conversation layer;
+   * the model is told, not asked to work it out.
+   */
+  turn?: string[];
   /** Shipped when the model is out or the gate rejects. */
   fallback: string;
 };
@@ -67,8 +73,27 @@ function systemPrompt(req: ReplyRequest): string {
     // rejects the whole reply over it.
     'This includes durations and counts: do not write "next 24 hours" or',
     '"3-day forecast" unless that number is in DATA. Say "tomorrow" or',
-    '"later today" instead.',
+    '"later today" instead. Use "daysAgo" and "hoursAgo" from DATA for',
+    '"3 days ago"; never work out a date difference yourself.',
+    '',
+    'ANSWER THE QUESTION ASKED. DATA.asked says what it was about and when.',
+    'A question about the past is answered from DATA.history only — never',
+    'from a present reading or a forecast. If DATA says something is',
+    'unavailable, say so plainly; never estimate it.',
+    'History values are MODELLED (see DATA.historyNature), not rain-gauge',
+    'readings. Say that briefly, once.',
   ];
+
+  if (req.turn?.length) lines.push('', 'THIS TURN:', ...req.turn.map((t) => `- ${t}`));
+
+  if (!req.facts) {
+    lines.push(
+      '',
+      'Nothing was fetched for this turn. Reply briefly and naturally, and',
+      'state no weather value at all — not even one from earlier in the',
+      'conversation.',
+    );
+  }
 
   if (req.severityStrings?.length) {
     lines.push(
@@ -87,10 +112,10 @@ function systemPrompt(req: ReplyRequest): string {
 function userPrompt(req: ReplyRequest): string {
   const parts: string[] = [];
 
-  if (req.context.standing) {
+  if (req.context.standing?.place) {
     const s = req.context.standing;
     parts.push(
-      `CONTEXT: the conversation is about ${s.place ?? 'no place yet'}` +
+      `CONTEXT: the conversation is about ${s.place}` +
         `${s.variable !== 'all' ? `, specifically ${s.variable}` : ''}.`,
     );
   }
