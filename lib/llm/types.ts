@@ -24,6 +24,12 @@ export type CompletionRequest = {
   temperature?: number;
   /** Abort budget. A slow provider must not hold the request open. */
   timeoutMs?: number;
+  /**
+   * The budget for the whole chain. Each provider gets what is left of it,
+   * capped by `timeoutMs`, so one that hangs cannot spend the next one's
+   * turn as well — and when it is gone, the caller ships its template.
+   */
+  deadlineMs?: number;
 };
 
 export type CompletionResult =

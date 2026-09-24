@@ -256,7 +256,13 @@ export async function classify(
         schema: SCHEMA,
         schemaName: 'chat_turn',
         temperature: 0,
-        maxTokens: 300,
+        // The JSON is small; the rest is room for a reasoning fallback to
+        // think in without being cut off (see lib/render/reply.ts).
+        maxTokens: 800,
+        // Understanding the turn comes before fetching and rendering it, so
+        // its budget is the smaller one.
+        timeoutMs: 6_000,
+        deadlineMs: 8_000,
       });
       if (result.kind !== 'ok') return null;
       try {

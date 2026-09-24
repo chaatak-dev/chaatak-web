@@ -140,8 +140,17 @@ export async function writeReply(req: ReplyRequest): Promise<ReplyResult> {
     system: systemPrompt(req),
     user: userPrompt(req),
     temperature: 0.4,
-    maxTokens: 400,
-    timeoutMs: 12_000,
+    // Room to think as well as to answer. The fallback is a reasoning model,
+    // and its thinking is spent from this same budget: at 400 it used up to
+    // 398 tokens reasoning and was cut off before — or during — the answer.
+    // A cut-off completion is now refused by the adapter, so a budget this
+    // size is what keeps the fallback useful rather than just safe.
+    maxTokens: 1000,
+    // Eight seconds for any one provider, twelve for the lot: a hung primary
+    // still leaves the fallback time to answer, and nobody waits longer than
+    // that for words when the template is already written.
+    timeoutMs: 8_000,
+    deadlineMs: 12_000,
   });
 
   if (result.kind !== 'ok') {

@@ -95,11 +95,20 @@ export function groqModel(model: string, label = 'groq'): LanguageModel {
 
       try {
         const json = (await res.json()) as {
-          choices?: { message?: { content?: string } }[];
+          choices?: { message?: { content?: string }; finish_reason?: string }[];
         };
-        const text = json.choices?.[0]?.message?.content;
+        const choice = json.choices?.[0];
+        const text = choice?.message?.content;
         if (typeof text !== 'string' || !text.trim()) {
           return { kind: 'failed', provider: label, reason: 'empty completion' };
+        }
+        // Stopped by the token limit, not by the model: the text ends
+        // wherever the budget ran out — possibly one word before "not". A
+        // truncated answer is not an answer, and the gate cannot see a
+        // missing clause. (Reasoning models spend the same budget thinking,
+        // so this is not a rare case.)
+        if (choice?.finish_reason === 'length') {
+          return { kind: 'failed', provider: label, reason: 'truncated at the token limit' };
         }
         return {
           kind: 'ok',

@@ -115,3 +115,52 @@ test('concurrent callers do not interfere', async () => {
     assert.deepEqual(attempted, ['primary', 'secondary']);
   }
 });
+
+/* ---- the chain's own deadline ----------------------------------------- */
+
+/** A provider that takes `ms` to fail, and records the timeout it was given. */
+function slow(name: string, ms: number, seen: (number | undefined)[]): LanguageModel {
+  return {
+    name,
+    model: `${name}-model`,
+    configured: () => true,
+    async complete(request) {
+      seen.push(request.timeoutMs);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      return { kind: 'failed', provider: name, reason: 'TimeoutError' };
+    },
+  };
+}
+
+test('each provider gets what is left of the deadline, capped by its own timeout', async () => {
+  const seen: (number | undefined)[] = [];
+  await completeWithFallback([slow('first', 0, seen)], { ...REQ, timeoutMs: 8_000, deadlineMs: 5_000 });
+  assert.ok(seen[0] !== undefined && seen[0] <= 5_000 && seen[0] > 4_000, `got ${seen[0]}`);
+
+  const roomy: (number | undefined)[] = [];
+  await completeWithFallback([slow('first', 0, roomy)], { ...REQ, timeoutMs: 3_000, deadlineMs: 12_000 });
+  assert.equal(roomy[0], 3_000, 'the per-provider timeout still caps it');
+});
+
+test('a provider that spends the deadline is not followed by another', async () => {
+  const seen: (number | undefined)[] = [];
+  const calls: string[] = [];
+  const { result, attempted } = await completeWithFallback(
+    [slow('hung', 80, seen), fake('next', ok('next'), calls)],
+    // 80ms of a 1,050ms budget leaves under MIN_ATTEMPT_MS: not worth starting.
+    { ...REQ, timeoutMs: 8_000, deadlineMs: 1_050 },
+  );
+  assert.deepEqual(attempted, ['hung']);
+  assert.deepEqual(calls, [], 'the next provider was never called');
+  assert.equal(result.kind, 'failed', 'the caller ships its template');
+});
+
+test('without a deadline, the chain behaves as it always did', async () => {
+  const seen: (number | undefined)[] = [];
+  const { result } = await completeWithFallback([slow('first', 0, seen), fake('second', ok('second'))], {
+    ...REQ,
+    timeoutMs: 8_000,
+  });
+  assert.equal(seen[0], 8_000);
+  assert.equal(result.kind, 'ok');
+});

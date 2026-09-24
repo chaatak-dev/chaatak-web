@@ -92,11 +92,17 @@ export function geminiModel(
 
       try {
         const json = (await res.json()) as {
-          candidates?: { content?: { parts?: { text?: string }[] } }[];
+          candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
         };
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        const candidate = json.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text;
         if (typeof text !== 'string' || !text.trim()) {
           return { kind: 'failed', provider: label, reason: 'empty completion' };
+        }
+        // Anything but a natural stop — the token limit, a safety stop —
+        // leaves text that ends where it was cut, not where it was finished.
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+          return { kind: 'failed', provider: label, reason: `stopped: ${candidate.finishReason}` };
         }
         return {
           kind: 'ok',

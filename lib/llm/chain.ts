@@ -10,6 +10,12 @@
 
 import type { CompletionRequest, CompletionResult, LanguageModel } from './types';
 
+/**
+ * Below this, a provider is not worth starting: no answer comes back in less,
+ * and the time is better spent shipping the template.
+ */
+export const MIN_ATTEMPT_MS = 1_000;
+
 export type ChainOutcome = {
   result: CompletionResult;
   /** Providers tried, in order, for logging. */
@@ -22,6 +28,7 @@ export async function completeWithFallback(
 ): Promise<ChainOutcome> {
   const attempted: string[] = [];
   let last: CompletionResult | null = null;
+  const started = Date.now();
 
   for (const provider of providers) {
     // Checked before the network call so an unkeyed provider costs nothing.
@@ -34,8 +41,21 @@ export async function completeWithFallback(
       continue;
     }
 
+    // What is left of the chain's budget. Someone who asked out loud is
+    // waiting in silence; a provider that hangs must not be followed by
+    // another full timeout.
+    let timeoutMs = request.timeoutMs;
+    if (request.deadlineMs !== undefined) {
+      const left = request.deadlineMs - (Date.now() - started);
+      if (left < MIN_ATTEMPT_MS) {
+        last = { kind: 'failed', provider: provider.name, reason: 'out of time' };
+        break;
+      }
+      timeoutMs = Math.min(timeoutMs ?? left, left);
+    }
+
     attempted.push(provider.name);
-    const result = await provider.complete(request);
+    const result = await provider.complete({ ...request, timeoutMs });
     last = result;
 
     if (result.kind === 'ok') return { result, attempted };
