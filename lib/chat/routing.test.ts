@@ -28,6 +28,7 @@ import type { ReplyRequest, ReplyResult } from '../render/reply';
 import type { WeatherSnapshot } from '../weather/api';
 import type { Location, NoData } from '../weather/types';
 import type { TimeWindow } from '../parse/types';
+import { queryStats } from '../log';
 
 const TODAY = '2026-09-24';
 
@@ -401,7 +402,7 @@ const PLACES = [location('Ghaziabad', 'गाजियाबाद'), location('
 
 type Classify = AnswerDeps['classify'];
 
-function pipeline(classify: Classify = async () => null) {
+function pipeline(classify: Classify = async () => null, options: { renderMs?: number } = {}) {
   const calls = { resolve: [] as string[], render: [] as ReplyRequest[] };
   const deps: Partial<AnswerDeps> = {
     now: () => NOW,
@@ -443,6 +444,7 @@ function pipeline(classify: Classify = async () => null) {
     history: async () => ({ kind: 'noData', reason: 'lookupFailed', source: 't', endpoint: 't', checkedAt: '', statement: { hi: '', en: '' } }),
     render: async (req: ReplyRequest): Promise<ReplyResult> => {
       calls.render.push(req);
+      if (options.renderMs) await new Promise((resolve) => setTimeout(resolve, options.renderMs));
       return { text: req.fallback, fromModel: false, gate: 'skipped', latencyMs: 0 };
     },
   };
@@ -522,4 +524,73 @@ test('end to end, with no model an unknown name in a place slot is asked about, 
   const reply = await c.say('kal office mein baarish hogi?');
   assert.equal(reply.meta.act, 'unclear');
   assert.deepEqual(c.calls.resolve, ['ghaziabad'], '"office" never reached the resolver');
+});
+
+/* ------------------------------------------------------------------ */
+/* 9. Answering while the classifier reads                              */
+/* ------------------------------------------------------------------ */
+
+const ADVICE = 'Can I play cricket with my friend tomorrow evening?';
+const later = <T>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+
+test('advice is written while the classifier reads, and ships when it agrees — the wait is the longer of the two, not both', async () => {
+  const c = pipeline(
+    (message, ctx) => later(300, { plan: toPlan(raw({ topic: 'forecast', dayOffset: 1 }), message, ctx), cacheHit: false }),
+    { renderMs: 250 },
+  );
+  await c.say('kal ghaziabad mein barish hogi?');
+  const renders = c.calls.render.length;
+  const logged = queryStats().total;
+
+  const began = Date.now();
+  const reply = await c.say(ADVICE);
+  const took = Date.now() - began;
+
+  assert.equal(reply.grounding?.place.name, 'Ghaziabad');
+  assert.deepEqual(reply.standing?.timeWindow, day(1, 'evening'));
+  assert.equal(reply.meta.parseLayer, 'llm', 'credited to the classifier that confirmed it');
+  assert.equal(c.calls.render.length - renders, 1, 'written once');
+  assert.equal(queryStats().total - logged, 1, 'logged once');
+  assert.ok(took < 500, `took ${took} ms: the classifier (300) and the answer (250) ran together`);
+});
+
+test('when the classifier disagrees, the early answer is dropped and its plan is answered', async () => {
+  const c = pipeline(
+    (message, ctx) => later(200, { plan: toPlan(raw({ place: 'Noida', topic: 'forecast', dayOffset: 1 }), message, ctx), cacheHit: false }),
+    { renderMs: 50 },
+  );
+  await c.say('kal ghaziabad mein barish hogi?');
+  const logged = queryStats().total;
+  const reply = await c.say('can I play cricket at Noida tomorrow with my friend?');
+  assert.equal(reply.grounding?.place.name, 'Noida', 'the classifier decides the place');
+  assert.equal(queryStats().total - logged, 1, 'the dropped answer is never logged as served');
+});
+
+test('a reading from the cache comes back at once, and nothing is written early', async () => {
+  const c = pipeline(async (message, ctx) => ({ plan: toPlan(raw({ topic: 'forecast', dayOffset: 1 }), message, ctx), cacheHit: true }));
+  await c.say('kal ghaziabad mein barish hogi?');
+  const renders = c.calls.render.length;
+  const reply = await c.say(ADVICE);
+  assert.equal(reply.meta.parseLayer, 'cache');
+  assert.equal(c.calls.render.length - renders, 1);
+});
+
+test('with no conversation there is no place to guess, so nothing is written early', async () => {
+  const c = pipeline((message, ctx) => later(100, { plan: toPlan(raw({ topic: 'forecast', dayOffset: 1 }), message, ctx), cacheHit: false }));
+  const reply = await c.say(ADVICE);
+  assert.equal(reply.needsLocation, true);
+  assert.equal(c.calls.render.length, 0);
+  assert.deepEqual(c.calls.resolve, []);
+});
+
+test('the classifier narrowing the topic ("umbrella" → rain) still confirms an answer written about all the weather', async () => {
+  const c = pipeline(
+    (message, ctx) => later(150, { plan: toPlan(raw({ topic: 'forecast', dayOffset: 1, variable: 'rain' }), message, ctx), cacheHit: false }),
+    { renderMs: 50 },
+  );
+  await c.say('kal ghaziabad mein barish hogi?');
+  const renders = c.calls.render.length;
+  const reply = await c.say('should I carry an umbrella to college tomorrow evening?');
+  assert.equal(reply.grounding?.place.name, 'Ghaziabad');
+  assert.equal(c.calls.render.length - renders, 1, 'the early answer shipped');
 });

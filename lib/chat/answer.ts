@@ -289,22 +289,130 @@ export async function answerQuestion(input: AnswerInput, overrides: Partial<Answ
   const today = todayInIndia(now);
   const { question, history } = input;
   const standing = readStanding(input.standing) ?? standingFromHistory(history);
+  const turn: Turn = { input, deps, started, now, question, history, standing };
 
   /* ---- understand the turn: what IS it? --------------------------- */
 
   const ctx = { standing, today };
-  let parseLayer: 'pattern' | 'cache' | 'llm' = 'pattern';
-  let plan: Plan | null = understandLocally(question, ctx);
+  const local = understandLocally(question, ctx);
+  if (local) return settle(await respond(local, 'pattern', turn), started);
 
-  if (!plan) {
-    const lastUser = [...history].reverse().find((m) => m.role === 'user' && m.text !== question)?.text;
-    const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.text;
-    const classified = await deps.classify(question, ctx, { lastUser, lastAssistant });
-    parseLayer = classified?.cacheHit ? 'cache' : 'llm';
-    // Every provider out: what the words plainly say, on the conversation's
-    // place — or ask what was meant. Never a geocode.
-    plan = classified?.plan ?? fallbackPlan(question, ctx);
+  const lastUser = [...history].reverse().find((m) => m.role === 'user' && m.text !== question)?.text;
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.text;
+  const classifying = deps.classify(question, ctx, { lastUser, lastAssistant });
+
+  /*
+   * ANSWERING WHILE THE CLASSIFIER READS. Advice — "can I play cricket
+   * tomorrow evening?", "kal office mein baarish hogi?" — goes to the
+   * classifier because nothing local can prove it names no other place. It
+   * almost always confirms what the words already say: the conversation's
+   * place, the time in the sentence. So that answer is fetched and written
+   * WHILE the classifier reads, and ships only if the classifier agrees. If
+   * it disagrees — it found a village the words did name — the guess is
+   * dropped and its plan is answered as it always was. The classifier still
+   * decides; only the waiting is gone. A reading already in the cache comes
+   * back at once, and then nothing is guessed at all.
+   */
+  const guess = likelyPlan(question, ctx);
+  let early: Promise<Answer | null> | null = null;
+  if (guess && !(await settlesWithin(classifying, SPECULATE_AFTER_MS))) {
+    early = respond(guess, 'llm', turn).catch(() => null);
   }
+
+  const classified = await classifying;
+  const parseLayer: ParseLayer = classified?.cacheHit ? 'cache' : 'llm';
+  // Every provider out: what the words plainly say, on the conversation's
+  // place — or ask what was meant. Never a geocode.
+  const plan = classified?.plan ?? fallbackPlan(question, ctx);
+
+  if (early && guess && samePlan(plan, guess)) {
+    const answer = await early;
+    if (answer) return settle(relabel(answer, parseLayer), started);
+  }
+  return settle(await respond(plan, parseLayer, turn), started);
+}
+
+type ParseLayer = 'pattern' | 'cache' | 'llm';
+
+/** Everything about the turn that answering it needs, whichever plan is answered. */
+type Turn = {
+  input: AnswerInput;
+  deps: AnswerDeps;
+  started: number;
+  now: Date;
+  question: string;
+  history: Message[];
+  standing: StandingQuery | null;
+};
+
+/** Below this, the classifier answered from its cache and there is nothing to hide. */
+const SPECULATE_AFTER_MS = 60;
+
+function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  return Promise.race([
+    promise.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms)),
+  ]);
+}
+
+/**
+ * The plan worth answering before the classifier has read the turn: a
+ * weather question the words plainly make, on the conversation's place.
+ * Anything else — a named place, "here", no conversation yet — waits.
+ */
+function likelyPlan(question: string, ctx: { standing: StandingQuery | null; today: string }): WeatherPlan | null {
+  if (!ctx.standing?.place) return null;
+  const plan = fallbackPlan(question, ctx);
+  return plan.act === 'weather' && plan.place.kind === 'carried' ? plan : null;
+}
+
+/**
+ * The same question: the same place, window and topic. The variable may
+ * narrow — an early answer written about all the weather already covers the
+ * rain the classifier heard in "umbrella" — but never change.
+ */
+function samePlan(plan: Plan, guess: WeatherPlan): boolean {
+  if (plan.act !== 'weather') return false;
+  return (
+    plan.place.kind === guess.place.kind &&
+    plan.intent === guess.intent &&
+    (plan.variable === guess.variable || guess.variable === 'all') &&
+    JSON.stringify(plan.window) === JSON.stringify(guess.window)
+  );
+}
+
+/** An answer written early, credited to the layer that confirmed it. */
+function relabel(answer: Answer, parseLayer: ParseLayer): Answer {
+  return { ...answer, reply: { ...answer.reply, meta: { ...answer.reply.meta, parseLayer } } };
+}
+
+/** The one answer this turn ships: logged once, with the time it really took. */
+function settle(answer: Answer, started: number): Answer {
+  const { reply } = answer;
+  const latencyMs = Date.now() - started;
+  logQuery({
+    parseLayer: reply.meta.parseLayer as ParseLayer,
+    cacheHit: reply.meta.parseLayer === 'cache',
+    latencyMs,
+    lang: `${reply.lang}-${reply.script}`,
+    outcome: reply.needsLocation ? 'cannotParse' : 'answered',
+    act: reply.meta.act as Plan['act'],
+    langBasis: reply.meta.langBasis,
+  });
+  return { ...answer, reply: { ...reply, meta: { ...reply.meta, latencyMs } } };
+}
+
+/**
+ * Answer a plan: decide the language, then — for a weather turn — find the
+ * place, fetch, write and verify. Called once per turn, and a second time
+ * only when an early answer was written for a plan the classifier did not
+ * confirm.
+ */
+async function respond(plan: Plan, parseLayer: ParseLayer, turn: Turn): Promise<Answer> {
+  const { input, deps, started, now, question, history, standing } = turn;
 
   /* ---- decide the language, before anything is written ------------ */
 
@@ -358,15 +466,6 @@ export async function answerQuestion(input: AnswerInput, overrides: Partial<Answ
     extra: Partial<ChatReply> & { fromModel?: boolean; gate?: string } = {},
   ): Answer => {
     const { fromModel = false, gate = 'skipped', ...rest } = extra;
-    logQuery({
-      parseLayer,
-      cacheHit: parseLayer === 'cache',
-      latencyMs: Date.now() - started,
-      lang: `${turnLang.code}-${turnLang.script}`,
-      outcome: rest.needsLocation ? 'cannotParse' : 'answered',
-      act: plan!.act,
-      langBasis: turnLang.basis,
-    });
     return {
       reply: {
         text,
@@ -377,7 +476,7 @@ export async function answerQuestion(input: AnswerInput, overrides: Partial<Answ
         ...rest,
         meta: {
           parseLayer,
-          act: plan!.act,
+          act: plan.act,
           fromModel,
           gate,
           latencyMs: Date.now() - started,
