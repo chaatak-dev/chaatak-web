@@ -17,12 +17,76 @@ import type {
   RecognitionSession,
   Speaking,
   SpeechLang,
+  SpeechSegment,
   SpeechSource,
   SpeechSupport,
   Utterance,
 } from './types';
+import { splitForSpeech } from './split';
 import { encodePcm16Wav } from './wav';
 import { webSpeech } from './web-speech';
+
+/**
+ * One <audio> element for every answer, unlocked inside the tap that started
+ * the session (`primePlayback`). iOS lets an element play without a fresh
+ * gesture only once a gesture has played it — and an answer arrives seconds
+ * after the tap, from a network callback, when a newly made element may simply
+ * refuse to make a sound. `owner` says which answer is using it, so cancelling
+ * a finished one cannot pause the next.
+ */
+let player: HTMLAudioElement | null = null;
+let owner: symbol | null = null;
+let silentWav: string | null = null;
+
+/**
+ * Call synchronously from the tap that starts a voice session: plays a
+ * moment of silence through the shared element, and an empty utterance
+ * through the browser's own voice, so both may speak later without a tap.
+ */
+export function primePlayback(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!silentWav) {
+      const bytes = new Uint8Array(encodePcm16Wav(new Float32Array(800), 16_000));
+      let binary = '';
+      for (const b of bytes) binary += String.fromCharCode(b);
+      silentWav = `data:audio/wav;base64,${btoa(binary)}`;
+    }
+    player ??= new Audio();
+    if (owner === null) {
+      player.src = silentWav;
+      void player.play().catch(() => {});
+    }
+  } catch {
+    /* an element that cannot be primed is made fresh when it is needed */
+  }
+  try {
+    if ('speechSynthesis' in window) {
+      const nothing = new SpeechSynthesisUtterance('');
+      nothing.volume = 0;
+      window.speechSynthesis.speak(nothing);
+    }
+  } catch {
+    /* the browser's voice is a fallback; it unlocks on its own elsewhere */
+  }
+}
+
+/** Play one clip to its end — or until cancelled, or until it fails to decode. */
+function playClip(audio: HTMLAudioElement, url: string, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      audio.onended = null;
+      audio.onerror = null;
+      resolve();
+    };
+    audio.onended = finish;
+    // A decode failure must not hang the queue.
+    audio.onerror = finish;
+    signal.addEventListener('abort', finish, { once: true });
+    audio.src = url;
+    void audio.play().catch(finish);
+  });
+}
 
 /** Dhruva's conformer models are trained at 16kHz. */
 const TARGET_RATE = 16_000;
@@ -188,71 +252,70 @@ export const bhashiniSpeech: SpeechSource = {
     };
   },
 
+  /**
+   * Spoken a sentence at a time (see ./split.ts): the next piece is
+   * synthesised while the current one plays, so the wait before the voice is
+   * the wait for its first sentence rather than for the whole answer.
+   */
   speak(utterance: Utterance): Speaking {
     const controller = new AbortController();
-    let audio: HTMLAudioElement | null = null;
+    const me = Symbol('answer');
+    const audio = player ?? new Audio();
+    owner = me;
     let url: string | null = null;
     let fallback: Speaking | null = null;
 
     /**
      * The browser's own voice, when Bhashini could not synthesise. Silence
-     * after a spoken question reads as broken; a plainer voice does not.
+     * after a spoken question reads as broken; a plainer voice does not. It
+     * finishes the answer, rather than trading voices sentence by sentence.
      */
-    const speakLocally = async (text: string, lang: SpeechLang) => {
+    const speakLocally = async (segments: SpeechSegment[]) => {
       if (controller.signal.aborted || !webSpeech.supports().speak) return;
-      fallback = webSpeech.speak([{ text, lang }]);
+      fallback = webSpeech.speak(segments);
       await fallback.done;
       fallback = null;
     };
 
+    const synthesise = (piece: SpeechSegment): Promise<Blob | null> =>
+      fetch('/api/speech/tts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: piece.text, lang: piece.lang }),
+        signal: controller.signal,
+      })
+        .then((res) => (res.ok ? res.blob() : null))
+        .catch(() => null);
+
     const done = (async () => {
-      for (const segment of utterance) {
-        if (controller.signal.aborted) return;
-        const text = segment.text.trim();
-        if (!text) continue;
+      const pieces: SpeechSegment[] = utterance.flatMap((segment) =>
+        splitForSpeech(segment.text).map((text) => ({ text, lang: segment.lang })),
+      );
+      let next = pieces.length ? synthesise(pieces[0]) : null;
 
-        let blob: Blob;
-        try {
-          const res = await fetch('/api/speech/tts', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ text, lang: segment.lang }),
-            signal: controller.signal,
-          });
-          if (!res.ok) {
-            await speakLocally(text, segment.lang);
-            continue;
-          }
-          blob = await res.blob();
-        } catch {
-          if (!controller.signal.aborted) await speakLocally(text, segment.lang);
-          continue;
+      for (let i = 0; i < pieces.length; i++) {
+        const blob = await next;
+        next = i + 1 < pieces.length ? synthesise(pieces[i + 1]) : null;
+        if (controller.signal.aborted) return;
+
+        if (!blob) {
+          await speakLocally(pieces.slice(i));
+          return;
         }
-
-        if (controller.signal.aborted) return;
         url = URL.createObjectURL(blob);
-        audio = new Audio(url);
-
-        await new Promise<void>((resolve) => {
-          if (!audio) return resolve();
-          audio.onended = () => resolve();
-          // A decode failure must not hang the queue.
-          audio.onerror = () => resolve();
-          controller.signal.addEventListener('abort', () => resolve(), { once: true });
-          void audio.play().catch(() => resolve());
-        });
-
+        await playClip(audio, url, controller.signal);
         URL.revokeObjectURL(url);
         url = null;
-        audio = null;
       }
-    })();
+    })().finally(() => {
+      if (owner === me) owner = null;
+    });
 
     return {
       done,
       cancel: () => {
         controller.abort();
-        audio?.pause();
+        if (owner === me) audio.pause();
         (fallback as Speaking | null)?.cancel();
         if (url) URL.revokeObjectURL(url);
       },

@@ -30,6 +30,7 @@ type SpeechRecognitionLike = {
   onresult: ((event: unknown) => void) | null;
   onerror: ((event: unknown) => void) | null;
   onend: (() => void) | null;
+  onspeechstart: (() => void) | null;
 };
 
 function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
@@ -48,6 +49,7 @@ function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
  * failure rather than silently listening in the wrong language.
  */
 import { bcp47 } from '../i18n/languages';
+import { splitForSpeech } from './split';
 
 export const webSpeech: SpeechSource = {
   name: 'Web Speech',
@@ -60,7 +62,7 @@ export const webSpeech: SpeechSource = {
     };
   },
 
-  recognise({ lang, onPartial }): RecognitionSession {
+  recognise({ lang, onPartial, onSpeechStart }): RecognitionSession {
     let settle: (r: Recognition) => void = () => {};
     const result = new Promise<Recognition>((resolve) => {
       settle = resolve;
@@ -99,6 +101,8 @@ export const webSpeech: SpeechSource = {
       }
       if (interim && onPartial) onPartial(interim);
     };
+
+    recogniser.onspeechstart = () => onSpeechStart?.();
 
     recogniser.onerror = (event) => {
       const name = (event as { error?: string }).error ?? 'unknown';
@@ -147,25 +151,38 @@ export const webSpeech: SpeechSource = {
     };
   },
 
+  /**
+   * A sentence at a time, each with a watchdog. Chrome's synthesiser is known
+   * to stop partway through a long utterance and never fire `onend`; waiting
+   * on it forever left a voice session saying "Speaking" to a silent room.
+   */
   speak(utterance: Utterance): Speaking {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       return { done: Promise.resolve(), cancel: () => {} };
     }
 
     let cancelled = false;
+    let wake: (() => void) | null = null;
     const done = (async () => {
       for (const segment of utterance) {
-        if (cancelled) return;
-        const text = segment.text.trim();
-        if (!text) continue;
-
-        await new Promise<void>((resolve) => {
-          const speech = new SpeechSynthesisUtterance(text);
-          speech.lang = bcp47(segment.lang);
-          speech.onend = () => resolve();
-          speech.onerror = () => resolve();
-          window.speechSynthesis.speak(speech);
-        });
+        for (const text of splitForSpeech(segment.text)) {
+          if (cancelled) return;
+          await new Promise<void>((resolve) => {
+            // Generous: well past any real reading of this many characters.
+            const watchdog = window.setTimeout(() => settle(), 4000 + text.length * 150);
+            const settle = () => {
+              window.clearTimeout(watchdog);
+              wake = null;
+              resolve();
+            };
+            wake = settle;
+            const speech = new SpeechSynthesisUtterance(text);
+            speech.lang = bcp47(segment.lang);
+            speech.onend = settle;
+            speech.onerror = settle;
+            window.speechSynthesis.speak(speech);
+          });
+        }
       }
     })();
 
@@ -174,6 +191,7 @@ export const webSpeech: SpeechSource = {
       cancel: () => {
         cancelled = true;
         window.speechSynthesis.cancel();
+        (wake as (() => void) | null)?.();
       },
     };
   },

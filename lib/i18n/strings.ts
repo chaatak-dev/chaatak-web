@@ -229,13 +229,26 @@ export const STRINGS = {
      screen reader, to someone who has turned animation off, or in sunlight. */
   'voice.start': { hi: 'बोलकर बात करें', en: 'Talk to Chaatak' },
   'voice.stop': { hi: 'बोलना बंद करें', en: 'Stop voice' },
+  /* The button's name while someone is being heard: it sends now. */
+  'voice.send': { hi: 'अभी भेजें', en: 'Send now' },
   'voice.requesting': { hi: 'माइक की अनुमति दें…', en: 'Allow the microphone…' },
   'voice.listening': { hi: 'सुन रहे हैं — बोलिए', en: 'Listening — just speak' },
-  'voice.hearing': { hi: 'आपकी बात सुन रहे हैं…', en: 'Hearing you…' },
+  'voice.hearing': { hi: 'सुन रहे हैं — भेजने के लिए दबाएँ', en: 'Hearing you — tap to send' },
   'voice.processing': { hi: 'जाँच रहे हैं…', en: 'Checking…' },
-  'voice.speaking': { hi: 'बोल रहे हैं — बीच में बोल सकते हैं', en: 'Speaking — talk over me to interrupt' },
+  'voice.speaking': { hi: 'बोल रहे हैं — रोकने के लिए दबाएँ', en: 'Speaking — tap to stop' },
   'voice.stopped': { hi: 'आवाज़ बंद', en: 'Voice off' },
   'voice.notHeard': { hi: 'सुनाई नहीं दिया — फिर से बोलिए', en: 'Didn’t catch that — say it again' },
+  /* The recogniser did not answer — not the same as hearing nothing, and not
+     said as if it were: the person did nothing wrong. */
+  'voice.retry': {
+    hi: 'आवाज़ सेवा ने जवाब नहीं दिया — फिर से बोलिए',
+    en: 'The voice service didn’t answer — say it again',
+  },
+  /* The session ended itself after a long silence, and let go of the mic. */
+  'voice.idleStopped': {
+    hi: 'कुछ देर कोई नहीं बोला, इसलिए माइक बंद कर दिया',
+    en: 'Nobody spoke for a while, so the microphone is off',
+  },
   'voice.deniedBody': {
     hi: 'माइक की अनुमति बंद है। ब्राउज़र की साइट सेटिंग में अनुमति दें, या नीचे लिखकर पूछें।',
     en: 'Microphone permission is off. Allow it in your browser’s site settings, or type your question below.',

@@ -283,20 +283,44 @@ a stable gutter, so content does not shift when one appears.
 
 **The microphone is a session, not a recorder.** Tap once and talk. When you
 stop, the question goes by itself; the answer is spoken; it listens again —
-until Stop. Talking over the answer stops it (barge-in). The states are a pure
-machine in `lib/speech/session.ts` — idle, requesting permission, listening,
-speech detected, processing, speaking, stopped, error — and every one of them
-is written beside the button and announced once, so the control reads the same
-with animation off.
+until Stop, or until nobody has spoken for thirty seconds. While you are being
+heard the same button reads **Send now**: tap-talk-tap still works, and in a
+room too loud for any detector it is how a question always gets through. The
+states are a pure machine in `lib/speech/session.ts` — idle, requesting
+permission, listening, speech detected, processing, speaking, stopped, error —
+and every one of them is written beside the button and announced once, so the
+control reads the same with animation off.
 
-End of speech is detected by energy, not by a timer (`lib/speech/vad.ts`): an
-adaptive noise floor, separate thresholds to start and stop (so a pause
-mid-sentence does not end it), a minimum amount of voiced audio, and a check
-that the level actually varies, so a fan or traffic is never submitted as a
-question. The microphone opens with echo cancellation and noise suppression,
-only while a session runs, and the tracks are stopped when it ends. While the
-answer plays, the start threshold is raised so the speaker's own voice leaking
-back does not count as barging in.
+**Turn-taking, not barge-in.** The microphone is released while a question is
+answered and taken again for the next turn. A phone with its microphone open
+plays audio through the call path — quieter, sometimes out of the earpiece — so
+an answer spoken over an open microphone is one a farmer at arm's length does
+not hear; and Chaatak's own voice leaking back could interrupt it and be
+transcribed as the next question. The button stops an answer.
+
+End of speech is detected by energy, not by a timer (`lib/speech/vad.ts`), and
+the detector was tuned by replaying real speech — Bhashini TTS in Hindi and
+English, at the browser's own 48 kHz framing — under fans, outdoor noise,
+clicks and background voices. The first version handled 23% of those trials;
+this one handles 85% (the rest are whisper-level voices and 8 dB SNR) and sends
+no noise-only utterance to the recogniser in any of them. It tracks the room's
+floor and the background's loud end; ends a turn after about a second of quiet
+that only a sustained voice — not a click — can interrupt; waits longer after a
+lone short word ("कल…" is somebody thinking); re-learns a fan that switches on
+mid-sentence; and judges whether a sound was speech across its whole body,
+dips included, so a soft voice is not thrown away as a fan.
+
+Audio arrives through an AudioWorklet off the main thread (ScriptProcessor only
+where worklets are missing), in an AudioContext made inside the tap, and goes
+up as G.711 μ-law WAV — half of 16-bit PCM, no base64 — trimmed of the silence
+the detector waited through; the server widens it back before Dhruva sees it.
+With `auto` detection the Indic and English recognisers run in parallel and the
+answer is given as soon as it is settled: Hindi that reads as Hindi does not
+wait for Whisper, the slowest of them. The spoken answer is synthesised a
+sentence at a time, the next while the current one plays. A recogniser that
+fails is retried once, then the session moves to the browser's own recogniser
+rather than ending; "the service did not answer" is never shown as "didn't
+catch that".
 
 ### Accessibility
 

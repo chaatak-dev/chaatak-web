@@ -66,6 +66,8 @@ export interface SpeechSource {
      * which is why it is optional rather than part of the contract.
      */
     onPartial?: (text: string) => void;
+    /** The engine has begun to hear speech, when it can tell. */
+    onSpeechStart?: () => void;
   }): RecognitionSession;
   speak(utterance: Utterance): Speaking;
 }

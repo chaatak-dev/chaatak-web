@@ -1,7 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { candidatesFor, chooseTranscript, indicEvidence, readsAsNative } from './detect';
+import { candidatesFor, chooseTranscript, decisiveIndic, indicEvidence, readsAsNative } from './detect';
+
+test('the Indic transcripts alone can settle it — and say so only when they do', () => {
+  const hindi = decisiveIndic([{ lang: 'hi', transcript: 'कल लखनऊ में बारिश होगी क्या' }]);
+  assert.equal(hindi?.lang, 'hi');
+  assert.equal(hindi?.confidence, 'high');
+  // English spelled out in Devanagari does not settle it: Whisper must be heard.
+  assert.equal(decisiveIndic([{ lang: 'hi', transcript: 'वॉट इज़ द वेदर इन डेली' }]), null);
+  // A bare place name carries no evidence either way.
+  assert.equal(decisiveIndic([{ lang: 'hi', transcript: 'लखनऊ' }]), null);
+  // English transcripts are never an Indic answer.
+  assert.equal(decisiveIndic([{ lang: 'en', transcript: 'Will it rain?' }]), null);
+});
+
+test('deciding early and deciding at the end agree', () => {
+  const heard = [
+    { lang: 'hi' as const, transcript: 'आज का मौसम कैसा है' },
+    { lang: 'en' as const, transcript: 'How is the weather today?' },
+  ];
+  const early = decisiveIndic(heard.filter((h) => h.lang !== 'en'));
+  const late = chooseTranscript(heard);
+  assert.deepEqual(
+    { lang: early?.lang, transcript: early?.transcript, confidence: early?.confidence },
+    { lang: late?.lang, transcript: late?.transcript, confidence: late?.confidence },
+  );
+});
 
 test('Hindi speech: the Hindi recogniser writes Hindi, and Hindi wins — whatever Whisper says', () => {
   // Whisper often answers Hindi audio with a fluent English translation. The

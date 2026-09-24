@@ -102,6 +102,42 @@ export function readsAsNative(heard: Heard): boolean {
   return e.native >= 1 && e.native >= e.transliteratedEnglish;
 }
 
+/** Among the Indic recognisers, the one whose transcript is most its own language. */
+function bestIndic(heard: Heard[]): { heard: Heard; evidence: Evidence } | null {
+  let best: { heard: Heard; evidence: Evidence } | null = null;
+  for (const h of heard) {
+    if (h.lang === 'en' || !h.transcript.trim()) continue;
+    // Each is judged against its own lexicon.
+    const evidence = indicEvidence(h);
+    if (
+      !best ||
+      evidence.native - evidence.transliteratedEnglish >
+        best.evidence.native - best.evidence.transliteratedEnglish
+    ) {
+      best = { heard: h, evidence };
+    }
+  }
+  return best;
+}
+
+/**
+ * The detection, when the Indic transcripts alone settle it: the best of them
+ * reads as its own language. Nothing the English recogniser says can change
+ * that — see the asymmetry above — so a caller holding every Indic answer
+ * need not wait for Whisper, the slowest of the recognisers.
+ */
+export function decisiveIndic(heard: Heard[]): Detection | null {
+  const best = bestIndic(heard);
+  if (!best) return null;
+  const { native, transliteratedEnglish } = best.evidence;
+  if (native < 1 || native < transliteratedEnglish) return null;
+  return {
+    ...best.heard,
+    confidence: native >= 2 ? 'high' : 'medium',
+    reason: `${native} ${best.heard.lang} word(s) in the ${best.heard.lang} transcript`,
+  };
+}
+
 /**
  * The language that was spoken, from what each recogniser heard.
  *
@@ -118,30 +154,12 @@ export function chooseTranscript(heard: Heard[], prior?: LanguageCode | null): D
   const english = usable.find((h) => h.lang === 'en') ?? null;
   const indic = usable.filter((h) => h.lang !== 'en');
 
-  // Among the Indic recognisers, the one whose transcript is most its own
-  // language. Each is judged against its own lexicon.
-  let best: { heard: Heard; evidence: Evidence } | null = null;
-  for (const h of indic) {
-    const evidence = indicEvidence(h);
-    if (
-      !best ||
-      evidence.native - evidence.transliteratedEnglish >
-        best.evidence.native - best.evidence.transliteratedEnglish
-    ) {
-      best = { heard: h, evidence };
-    }
-  }
+  const decided = decisiveIndic(usable);
+  if (decided) return decided;
 
+  const best = bestIndic(usable);
   if (best) {
     const { native, transliteratedEnglish } = best.evidence;
-
-    if (native >= 1 && native >= transliteratedEnglish) {
-      return {
-        ...best.heard,
-        confidence: native >= 2 ? 'high' : 'medium',
-        reason: `${native} ${best.heard.lang} word(s) in the ${best.heard.lang} transcript`,
-      };
-    }
 
     if (english && transliteratedEnglish > native) {
       return {

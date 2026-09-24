@@ -36,3 +36,4 @@ export function pickSource(
 }
 
 export { bhashiniSpeech, webSpeech };
+export { primePlayback } from './bhashini';
