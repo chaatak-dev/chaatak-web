@@ -24,7 +24,7 @@
  * old tap-talk-tap, still there for a noisy room or a quick question.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isLanguageCode, type LanguageCode } from '@/lib/i18n/languages';
 import {
   captureSupported,
@@ -111,6 +111,13 @@ function createLevelStore(): LevelStore & { set: (value: number) => void } {
   };
 }
 
+const noopSubscribe = () => () => {};
+
+/** A microphone to capture from, or a recogniser that opens its own. */
+function voiceCapable(): boolean {
+  return captureSupported() || Boolean(browserRecogniser());
+}
+
 /** The browser's own recogniser, where it exists. */
 function browserRecogniser() {
   return webSpeech.supports().recognise ? webSpeech : null;
@@ -127,13 +134,15 @@ function likelyLanguages(options: VoiceOptions): LanguageCode[] {
 }
 
 /**
- * Whether the server has a recogniser — asked once per page, and early, so
- * the tap that starts a session does not wait on it. The same request asks
- * the server to look up the recognisers the session is likely to need.
+ * Whether the server has a recogniser — asked once per page, when the page
+ * is idle, so the tap that starts a session does not wait on it. Only that:
+ * looking up the recognisers themselves costs the server calls to Bhashini,
+ * and is done when someone actually starts talking (see `start`), not for
+ * every visitor who never touches the microphone.
  */
 let serverProbe: Promise<boolean> | null = null;
-function askServer(warm: LanguageCode[]): Promise<boolean> {
-  serverProbe ??= fetch(`/api/speech/asr?warm=${warm.join(',')}`, { cache: 'no-store' })
+function askServer(): Promise<boolean> {
+  serverProbe ??= fetch('/api/speech/asr', { cache: 'no-store' })
     .then((res) => res.json() as Promise<{ configured?: boolean }>)
     .then((body) => Boolean(body.configured))
     .catch(() => {
@@ -148,7 +157,10 @@ export function useVoiceSession(options: VoiceOptions): VoiceSession {
   const [state, setState] = useState<VoiceState>({ kind: 'idle' });
   const [partial, setPartial] = useState('');
   const [engine, setEngine] = useState<Engine>('unknown');
-  const [supported, setSupported] = useState(false);
+  // Assumed on the server and read on the client: the control is part of the
+  // first paint, rather than appearing a moment later and pushing the
+  // composer up. Only the rare browser with neither API loses it.
+  const supported = useSyncExternalStore(noopSubscribe, voiceCapable, () => true);
   const [level] = useState(createLevelStore);
 
   // The machine is driven from audio callbacks, which fire outside React's
@@ -178,7 +190,7 @@ export function useVoiceSession(options: VoiceOptions): VoiceSession {
   // failed utterance at a time.
   const resolveEngine = useCallback(async (): Promise<Engine> => {
     if (engineRef.current !== 'unknown') return engineRef.current;
-    const server = await askServer(likelyLanguages(optionsRef.current));
+    const server = await askServer();
     serverVoiceRef.current = server;
     if (engineRef.current === 'unknown') {
       const next: Engine = server && captureSupported() ? 'bhashini' : browserRecogniser() ? 'browser' : 'unknown';
@@ -189,12 +201,14 @@ export function useVoiceSession(options: VoiceOptions): VoiceSession {
   }, []);
 
   useEffect(() => {
-    // Read after mount: `navigator` does not exist on the server.
-    const timer = window.setTimeout(() => {
-      setSupported(captureSupported() || Boolean(browserRecogniser()));
-      void resolveEngine();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    // The engine question waits until the page has nothing better to do.
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(() => void resolveEngine(), { timeout: 3000 })
+      : window.setTimeout(() => void resolveEngine(), 1200);
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle);
+    };
   }, [resolveEngine]);
 
   /* ---- the machine ------------------------------------------------- */
@@ -512,9 +526,9 @@ export function useVoiceSession(options: VoiceOptions): VoiceSession {
     primePlayback();
     void contextRef.current?.close().catch(() => {});
     contextRef.current = engineRef.current === 'browser' ? null : createCaptureContext();
-    if (engineRef.current === 'bhashini') {
-      // The engine is known; ask the server to have this session's
-      // recognisers ready before the first question reaches it.
+    if (engineRef.current !== 'browser' && captureSupported()) {
+      // Someone is about to talk: have this session's recognisers looked up
+      // on the server before the first question reaches it.
       const warm = likelyLanguages(optionsRef.current).join(',');
       void fetch(`/api/speech/asr?warm=${warm}`, { cache: 'no-store' }).catch(() => {});
     }

@@ -211,6 +211,30 @@ export function ChatView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, thinking]);
 
+  /*
+   * The transcript changes height without anyone scrolling: the keyboard
+   * opens, the phone turns, the voice control grows a line. A reader who was
+   * following the latest answer stays on it; one reading further up stays
+   * where they are.
+   */
+  const pinnedRef = useRef(pinned);
+  useEffect(() => {
+    pinnedRef.current = pinned;
+  }, [pinned]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let height = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (el.clientHeight === height) return;
+      height = el.clientHeight;
+      if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   /**
    * The reader's own scrolling is the only thing that changes who is in
    * control.
@@ -591,9 +615,10 @@ export function ChatView() {
             screen the sidebar carries it, and two of them on one page is a
             logo used as decoration.
           */}
-          <span className="masthead__mark">
+          {/* The mark is the way home: a fresh chat, as the sidebar's is. */}
+          <button type="button" className="masthead__mark masthead__home" onClick={app.newChat} aria-label={t('nav.home')}>
             <LogoMark size={40} />
-          </span>
+          </button>
 
           <div className="masthead__where">
             {where ? (

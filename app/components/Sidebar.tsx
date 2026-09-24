@@ -12,6 +12,7 @@
  * section, it says what signing in would do — a blank space explains nothing.
  */
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from './AppState';
 import { AccountMenu } from './AccountMenu';
@@ -25,21 +26,24 @@ export function Sidebar() {
   return (
     <div className="sidebar__inner">
       <div className="sidebar__top">
-        <span className="sidebar__mark">
-          <LogoMark size={40} />
-        </span>
-        {/*
-          The second line is the romanisation, and it only means anything
-          under the Devanagari one. In English it said "Chaatak" twice.
-        */}
-        <p className="sidebar__brand">
-          <span className="sidebar__brand-hi">{app.t('brand.name')}</span>
-          {app.languages.ui !== 'en' && (
-            <span className="sidebar__brand-en" lang="en">
-              {app.t('brand.wordmark')}
-            </span>
-          )}
-        </p>
+        {/* The mark and name are the way home: a fresh chat. */}
+        <button type="button" className="sidebar__home" onClick={app.newChat} aria-label={app.t('nav.home')}>
+          <span className="sidebar__mark">
+            <LogoMark size={40} />
+          </span>
+          {/*
+            The second line is the romanisation, and it only means anything
+            under the Devanagari one. In English it said "Chaatak" twice.
+          */}
+          <span className="sidebar__brand">
+            <span className="sidebar__brand-hi">{app.t('brand.name')}</span>
+            {app.languages.ui !== 'en' && (
+              <span className="sidebar__brand-en" lang="en">
+                {app.t('brand.wordmark')}
+              </span>
+            )}
+          </span>
+        </button>
 
         {/* Only reachable when the sidebar is a drawer; hidden by CSS above. */}
         <button
@@ -77,6 +81,21 @@ export function Sidebar() {
         <RecentChats />
         <LocationsPanel />
       </div>
+
+      <Link href="/faq" className="sidebar__faq">
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M7.9 7.8a2.2 2.2 0 1 1 3.1 2c-.6.3-1 .8-1 1.4v.4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="10" cy="14.2" r="0.95" fill="currentColor" />
+        </svg>
+        <span>{app.t('faq.link')}</span>
+      </Link>
 
       <AccountMenu />
     </div>

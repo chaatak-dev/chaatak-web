@@ -35,38 +35,73 @@ export function AppShell() {
   const openerRef = useRef<HTMLElement | null>(null);
 
   /*
-   * The shell follows the VISUAL viewport, not the layout one.
+   * The shell is pinned to the VISUAL viewport — its top AND its height.
    *
-   * The app is a fixed-height column with the composer pinned to the bottom
-   * and the body not scrolling — which is right until a keyboard appears.
-   * Android is handled declaratively by `interactive-widget: resizes-content`
-   * in the viewport meta; iOS ignores that entirely and draws the keyboard
-   * OVER the layout, leaving the text input someone is typing into
-   * underneath it. Since the body cannot scroll, nothing brings it back.
+   * The app is a fixed column with the composer at the bottom and a document
+   * that never scrolls. Android is handled declaratively by
+   * `interactive-widget: resizes-content`: the keyboard shrinks the layout.
+   * iOS ignores that. It draws the keyboard over the layout and then PANS the
+   * visual viewport down to reveal the focused input — visualViewport's
+   * offsetTop becomes roughly the keyboard's height.
    *
-   * visualViewport.height is what the person can actually see. Writing it to
-   * a custom property lets the shell shorten by exactly the height of the
-   * keyboard, so the composer ends up sitting on top of it.
+   * Following only the height was the bug. The shell shortened to what was
+   * visible but stayed anchored at the top of the layout, so on iPhone the
+   * person saw the bottom of a short shell — the composer halfway up the
+   * screen — and, below it, the empty page the view had panned into. So the
+   * shell takes both: top = offsetTop, height = height, and it sits exactly
+   * over what can be seen, keyboard or not.
    *
-   * Absent (older browsers) the property is never set and the CSS falls back
-   * to 100dvh, which is the behaviour this replaces.
+   * Pinch-zoom is left alone: following the visual viewport while zoomed
+   * would pin the page to the magnifier and make zooming do nothing.
+   *
+   * `data-keyboard` marks a text field focused with the viewport covered, so
+   * the composer drops the home-indicator padding the keyboard now hides.
+   *
+   * Absent (older browsers), nothing is set and the CSS falls back to 100dvh.
    */
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
+    const root = document.documentElement;
+    let frame = 0;
 
     const apply = () => {
-      document.documentElement.style.setProperty(
-        '--viewport-height',
-        `${Math.round(viewport.height)}px`,
-      );
+      frame = 0;
+      if (viewport.scale > 1.01) return;
+      root.style.setProperty('--viewport-height', `${Math.round(viewport.height)}px`);
+      root.style.setProperty('--viewport-top', `${Math.round(viewport.offsetTop)}px`);
+      const field = document.activeElement;
+      const typing = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || (field instanceof HTMLElement && field.isContentEditable);
+      root.toggleAttribute('data-keyboard', typing && root.clientHeight - viewport.height > 120);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(apply);
+    };
+    // iOS can leave the document scrolled once the keyboard has gone, which
+    // leaves a band of empty page under the composer. The document never
+    // scrolls on purpose, so any scroll left over is put back.
+    const settle = () => {
+      schedule();
+      window.setTimeout(() => {
+        if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+        schedule();
+      }, 250);
     };
 
     apply();
-    viewport.addEventListener('resize', apply);
+    viewport.addEventListener('resize', schedule);
+    viewport.addEventListener('scroll', schedule);
+    window.addEventListener('focusin', schedule);
+    window.addEventListener('focusout', settle);
     return () => {
-      viewport.removeEventListener('resize', apply);
-      document.documentElement.style.removeProperty('--viewport-height');
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('resize', schedule);
+      viewport.removeEventListener('scroll', schedule);
+      window.removeEventListener('focusin', schedule);
+      window.removeEventListener('focusout', settle);
+      root.style.removeProperty('--viewport-height');
+      root.style.removeProperty('--viewport-top');
+      root.removeAttribute('data-keyboard');
     };
   }, []);
 

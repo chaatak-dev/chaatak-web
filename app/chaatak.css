@@ -26,7 +26,7 @@
 .masthead__inner {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   max-width: var(--column);
   min-height: 64px;
@@ -799,6 +799,18 @@
   border-color: var(--accent);
 }
 
+/* A bordered text field shows focus with ONE ring, hugging it: its border in
+   the accent and the ring widened to 3px. The page-wide outline sat 2px
+   outside the teal border and drew a second, concentric one — a field that
+   looked double-bordered rather than focused. */
+.composer__input:focus-visible,
+.recents__input:focus-visible,
+.places__input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
 .composer__send {
   display: flex;
   flex: none;
@@ -823,11 +835,27 @@
   cursor: default;
 }
 
-/* The page is a fixed-height app shell here: the transcript scrolls, the
-   composer does not. */
-body:has(.chat) {
-  height: var(--viewport-height, 100dvh);
+/* The page is an app shell here: the transcript scrolls, the document never
+   does — nothing to rubber-band, and nothing for a keyboard to push. */
+html:has(.shell),
+body:has(.shell) {
+  height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* With the keyboard up it covers the home indicator, so the padding kept
+   clear of it would only be a gap between the input and the keys. */
+html[data-keyboard] .composer {
+  padding-bottom: 10px;
+}
+
+/* Someone typing is not about to speak, and a phone turned sideways with its
+   keyboard up leaves under 200px: the idle voice control steps aside so the
+   input and the answer above it fit. A session that is live — the microphone
+   open, an answer being spoken — never hides. */
+html[data-keyboard] .voice:not(.voice--active) {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ */
@@ -968,6 +996,12 @@ body:has(.chat) {
 
 .langpicker {
   padding: 18px var(--gutter) 0;
+}
+
+/* Inside settings the dialog already has its margin: a second gutter pushed
+   the pickers in past their own heading, out of line with the theme buttons. */
+.settings__body .langpicker {
+  padding-inline: 0;
 }
 
 .langpicker__label {
@@ -1174,9 +1208,13 @@ body:has(.chat) {
 
 .shell {
   display: flex;
-  /* The visible viewport when a keyboard is up, 100dvh when it is not. See
-     the visualViewport effect in AppShell for why the fallback is not
-     enough on iOS. */
+  /* Pinned over exactly what can be seen: the visual viewport's top and
+     height while a keyboard is up, the whole screen when it is not. Fixed,
+     so iOS panning the page to reveal an input cannot move the shell off
+     the visible area. See the visualViewport effect in AppShell. */
+  position: fixed;
+  inset-inline: 0;
+  top: var(--viewport-top, 0px);
   height: var(--viewport-height, 100dvh);
   overflow: hidden;
 }
@@ -1892,8 +1930,11 @@ body:has(.chat) {
 /* Confirmation dialog                                                 */
 /* ------------------------------------------------------------------ */
 
+/* Centred: the page reset (margin: 0 on everything) removes the margin: auto
+   a modal dialog is centred by, and it sat in the top-left corner instead. */
 .confirm {
   width: min(92vw, 27rem);
+  margin: auto;
   padding: 20px;
   color: var(--text);
   background: var(--paper);
@@ -2008,6 +2049,34 @@ body:has(.chat) {
 .masthead__mark {
   display: flex;
   flex: none;
+}
+
+/* The mark as the way home. It looks exactly like the mark — no button
+   chrome — and the drawing's own left margin is taken back, so the menu
+   glyph and the bird sit a comfortable distance apart instead of a loose one. */
+.masthead__home,
+.sidebar__home {
+  align-items: center;
+  padding: 0;
+  color: inherit;
+  text-align: start;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.masthead__home {
+  min-height: 44px;
+  margin-inline-start: -6px;
+}
+
+.sidebar__home {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
 }
 
 /* "Using Ghaziabad" — above the answer, because a question with no place in
@@ -2457,7 +2526,7 @@ body:has(.chat) {
 }
 
 .chat__chip {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 14px;
   font-size: 15px;
   color: var(--text);
@@ -2659,6 +2728,7 @@ body:has(.chat) {
 .settings {
   width: min(94vw, 30rem);
   max-height: min(86dvh, 44rem);
+  margin: auto;
   padding: 0;
   color: var(--text);
   background: var(--paper);
@@ -3800,12 +3870,14 @@ dialog.wmap::backdrop {
 /* ------------------------------------------------------------------ */
 
 @media (max-height: 300px) {
-  body:has(.chat) {
+  html:has(.shell),
+  body:has(.shell) {
     height: auto;
     overflow: visible;
   }
 
   .shell {
+    position: static;
     height: auto;
     min-height: var(--viewport-height, 100dvh);
     overflow: visible;
@@ -3842,4 +3914,181 @@ dialog.wmap::backdrop {
 .chat__scroll,
 .rail {
   position: relative;
+}
+
+/* ------------------------------------------------------------------ */
+/* Questions and answers (/faq)                                        */
+/*                                                                     */
+/* A reading page in the product's own voice: one column at a reading  */
+/* measure, questions as headings and answers in full — nothing folded */
+/* away behind a tap. The accent marks only what is interactive.       */
+/* ------------------------------------------------------------------ */
+
+.faq__home {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius);
+}
+
+/* The header aligns with the reading column, not the wider conversation. */
+.faq .masthead__inner {
+  max-width: var(--column);
+}
+
+.faq__main {
+  width: 100%;
+  max-width: var(--column);
+  margin-inline: auto;
+  padding: 28px var(--gutter) calc(48px + env(safe-area-inset-bottom, 0px));
+}
+
+.faq__title {
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.faq__intro {
+  margin-top: 10px;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.faq__contents {
+  margin-top: 22px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.faq__contents ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.faq__contents a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  background: var(--accent-tint);
+  border-radius: 999px;
+}
+
+.faq__contents a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.faq__group {
+  padding-top: 32px;
+  scroll-margin-top: 12px;
+}
+
+.faq__group-heading {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+:lang(hi) .faq__group-heading {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.faq__item {
+  padding: 18px 0 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.faq__item:last-child {
+  border-bottom: none;
+}
+
+.faq__q {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.faq__a {
+  margin-top: 8px;
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+
+:lang(hi) .faq__intro,
+:lang(hi) .faq__q,
+:lang(hi) .faq__a {
+  line-height: var(--leading-deva);
+}
+
+.faq__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 28px;
+  padding: 0 14px 0 8px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1.5px solid var(--border-control);
+  border-radius: var(--radius);
+}
+
+.faq__back svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (min-width: 768px) {
+  .faq__main {
+    padding-top: 48px;
+  }
+
+  .faq__title {
+    font-size: 34px;
+  }
+}
+
+/* The way to the questions from the sidebar: quiet, above the account. */
+.sidebar__faq {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  margin: 0 14px 6px;
+  padding: 0 8px;
+  font-size: 14.5px;
+  color: var(--text-soft);
+  text-decoration: none;
+  border-radius: var(--radius);
+}
+
+.sidebar__faq:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.sidebar__faq svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
 }

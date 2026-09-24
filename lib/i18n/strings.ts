@@ -46,6 +46,8 @@ export const STRINGS = {
   'nav.open': { hi: 'बातचीत और जगहें खोलें', en: 'Open chats and locations' },
   'nav.close': { hi: 'बंद करें', en: 'Close menu' },
   'nav.newChat': { hi: 'नई बातचीत', en: 'New chat' },
+  /* The logo's name as a control: it goes home, to a fresh chat. */
+  'nav.home': { hi: 'चातक — नई बातचीत', en: 'Chaatak — new chat' },
   'nav.recent': { hi: 'पिछली बातचीत', en: 'Recent' },
   'nav.monitored': { hi: 'निगरानी', en: 'Monitored' },
   'nav.untitled': { hi: 'नई बातचीत', en: 'New chat' },
@@ -270,6 +272,120 @@ export const STRINGS = {
     en: 'This browser cannot detect the language — listening in {language}.',
   },
   'voice.level': { hi: 'आवाज़ का स्तर', en: 'Input level' },
+
+  /* ---- questions and answers (/faq) --------------------------------- */
+  /* Plain statements of how Chaatak works, each one true of the code as it
+     stands. Severity wording is the catalogue's own (lib/alerts/templates),
+     never paraphrased. A blank line in an answer starts a new paragraph. */
+  'faq.link': { hi: 'सवाल-जवाब', en: 'FAQ' },
+  'faq.title': { hi: 'सवाल और जवाब', en: 'Questions and answers' },
+  'faq.intro': {
+    hi: 'चातक कैसे काम करता है, मौसम की जानकारी कहाँ से आती है, और आपकी दी हुई जानकारी का क्या होता है।',
+    en: 'How Chaatak works, where its weather comes from, and what happens to what you tell it.',
+  },
+  'faq.back': { hi: 'चातक पर लौटें', en: 'Back to Chaatak' },
+  'faq.contents': { hi: 'इस पेज पर', en: 'On this page' },
+
+  'faq.g.about': { hi: 'परिचय', en: 'About' },
+  'faq.g.data': { hi: 'मौसम और स्रोत', en: 'Weather and sources' },
+  'faq.g.warnings': { hi: 'चेतावनियाँ', en: 'Warnings' },
+  'faq.g.voice': { hi: 'आवाज़ और भाषाएँ', en: 'Voice and languages' },
+  'faq.g.privacy': { hi: 'निजता और आपका डेटा', en: 'Privacy and your data' },
+  'faq.g.limits': { hi: 'सीमाएँ', en: 'Limits' },
+
+  'faq.q.what': { hi: 'चातक क्या है?', en: 'What is Chaatak?' },
+  'faq.a.what': {
+    hi: 'चातक भारत मौसम विज्ञान विभाग (IMD) की आधिकारिक चेतावनियाँ और आपकी जगह का मौसम आपकी अपनी भाषा में बताता है — बोलकर या लिखकर। मौसम के बारे में पूछिए, या यह कि आज खेत में छिड़काव, सफ़र या क्रिकेट के लिए दिन ठीक है या नहीं — यह पूर्वानुमान देखकर जवाब देता है।\n\nइसे टीम Overcast ने स्मार्ट इंडिया हैकथॉन 2026 में, पहले से चेतावनी देने की IMD की समस्या के लिए बनाया है।',
+    en: 'Chaatak tells you the India Meteorological Department’s (IMD) official warnings, and the weather where you are, in your own language — by voice or by typing. Ask about the weather, or whether today is good for spraying a field, travelling or playing cricket, and it answers from the forecast.\n\nIt was built by Team Overcast for Smart India Hackathon 2026, for IMD’s problem statement on early warnings.',
+  },
+  'faq.q.account': { hi: 'क्या खाता बनाना ज़रूरी है?', en: 'Do I need an account?' },
+  'faq.a.account': {
+    hi: 'नहीं। कोई भी पूछ सकता है और जवाब पा सकता है। Google से साइन इन करने पर आपकी बातचीत सहेजी जाती है, और आप तीन जगहें सहेजकर उनकी चेतावनियाँ अपने आप पा सकते हैं।',
+    en: 'No. Anyone can ask and get an answer. Signing in with Google keeps your chats, and lets you save up to three places and receive their warnings automatically.',
+  },
+
+  'faq.q.sources': { hi: 'मौसम की जानकारी कहाँ से आती है?', en: 'Where does the weather come from?' },
+  'faq.a.sources': {
+    hi: 'चेतावनियाँ IMD से आती हैं, आपके ज़िले के लिए। अभी का मौसम और पूर्वानुमान Open-Meteo से आते हैं, जो एक मौसम-मॉडल सेवा है, और इन्हें “मॉडल” लिखकर दिखाया जाता है। हर जवाब के नीचे उसका स्रोत और जारी होने का समय लिखा होता है।',
+    en: 'Warnings come from IMD, for your district. The current weather and the forecast come from Open-Meteo, a weather-model service, and are marked as model values. Every answer shows its source and the time it was issued on the line beneath it.',
+  },
+  'faq.q.ai': { hi: 'क्या AI आंकड़े खुद बना देता है?', en: 'Does the AI make up the numbers?' },
+  'faq.a.ai': {
+    hi: 'नहीं। AI आंकड़ों के आस-पास वाक्य लिखता है; कोई आंकड़ा खुद नहीं बनाता। जवाब दिखाने से पहले उसके हर आंकड़े को डेटा से मिलाया जाता है। अगर मेल नहीं खाता, तो चातक पहले से लिखा हुआ सीधा जवाब दिखाता है।',
+    en: 'No. The AI writes the sentence around the numbers; it never produces a number itself. Every number in an answer is checked against the data before the answer is shown, and if the check fails Chaatak shows a plain pre-written answer instead.',
+  },
+  'faq.q.nature': {
+    hi: '“मॉडल”, “मापा गया” और “बुलेटिन” का क्या मतलब है?',
+    en: 'What do “model”, “observed” and “bulletin” mean?',
+  },
+  'faq.a.nature': {
+    hi: '“मॉडल” यानी मौसम-मॉडल से निकाला गया अनुमान — यह किसी वर्षामापी की रीडिंग नहीं है। “मापा गया” यानी किसी मौसम स्टेशन ने इसे मापा है। “बुलेटिन” यानी यह IMD की आधिकारिक चेतावनी है। चातक हमेशा बताता है कि आप इनमें से कौन-सी जानकारी देख रहे हैं।',
+    en: '“Model” means a value computed by a weather model — an estimate, not a reading from a rain gauge. “Observed” means a weather station measured it. “Bulletin” means it is IMD’s official warning. Chaatak always says which of these you are looking at.',
+  },
+  'faq.q.nodata': { hi: 'अगर मेरे इलाके का डेटा न हो तो?', en: 'What if there is no data for my area?' },
+  'faq.a.nodata': {
+    hi: 'चातक साफ़ बता देता है। यह पास के ज़िले के आंकड़े नहीं लेता, और न ही अंदाज़ा लगाता है।',
+    en: 'Chaatak says so plainly. It does not borrow a neighbouring district’s numbers, and it does not guess.',
+  },
+  'faq.q.aqi': { hi: 'क्या हवा की गुणवत्ता भारत का आधिकारिक AQI है?', en: 'Is the air quality India’s official AQI?' },
+  'faq.a.aqi': {
+    hi: 'नहीं। दिखाई गई हवा की गुणवत्ता यूरोपीय पैमाने पर मॉडल से निकला मान है। भारत का आधिकारिक सूचकांक CPCB का है, जो स्टेशनों पर अलग पैमाने से मापा जाता है — दोनों की तुलना नहीं की जा सकती। स्क्रीन पर लिखा होता है कि यह कौन-सा है।',
+    en: 'No. The air quality shown is a modelled value on the European scale. India’s official index is CPCB’s, measured at stations on different breakpoints, and the two cannot be compared. The screen says which one it is.',
+  },
+
+  'faq.q.colours': { hi: 'चेतावनी के रंगों का क्या मतलब है?', en: 'What do the warning colours mean?' },
+  'faq.a.colours': {
+    hi: 'ये IMD के रंग हैं। हरा — कोई चेतावनी नहीं। पीली चेतावनी — सतर्क रहें। नारंगी चेतावनी — तैयार रहें। लाल चेतावनी — तुरंत कार्रवाई करें।\n\nरंग हमेशा शब्दों में भी लिखा होता है, ताकि तेज़ धूप में या रंग न पहचान पाने पर भी पढ़ा जा सके।',
+    en: 'They are IMD’s. Green — no warning. Yellow warning — be aware. Orange warning — be prepared. Red warning — take action now.\n\nThe colour is always written out in words too, so it can be read in bright sun or without colour vision.',
+  },
+  'faq.q.automatic': { hi: 'क्या बिना पूछे चेतावनी मिल सकती है?', en: 'Can I get warnings without asking?' },
+  'faq.a.automatic': {
+    hi: 'हाँ। साइन इन करें, तीन जगहें तक सहेजें, और इस डिवाइस पर सूचनाएँ चालू करें या Telegram जोड़ें। जब IMD आपके किसी ज़िले के लिए चेतावनी जारी करता है, तो वह आपके पास अपने आप पहुँचती है — और अगर IMD उसे समय से पहले वापस ले लेता है, तो वह भी बताया जाता है।',
+    en: 'Yes. Sign in, save up to three places, and turn on notifications on this device or link Telegram. When IMD issues a warning for one of your districts it reaches you by itself — and if IMD withdraws it early, you are told that too.',
+  },
+  'faq.q.district': { hi: 'क्या चेतावनी ठीक मेरे गाँव के लिए होती है?', en: 'Is a warning for my exact village?' },
+  'faq.a.district': {
+    hi: 'IMD चेतावनियाँ ज़िले के हिसाब से जारी करता है, इसलिए एक चेतावनी पूरे ज़िले पर लागू होती है। चातक वही ज़िला दिखाता है, और कोई ऐसी सीमा नहीं बनाता जो IMD ने जारी न की हो।',
+    en: 'IMD issues warnings by district, so a warning covers the whole district. Chaatak shows the district it applies to, and never draws a boundary IMD did not publish.',
+  },
+
+  'faq.q.voice': { hi: 'बोलकर पूछना कैसे काम करता है?', en: 'How does voice work?' },
+  'faq.a.voice': {
+    hi: 'माइक दबाइए और बोलिए। बोलना रुकते ही सवाल अपने आप चला जाता है — या तुरंत भेजने के लिए दोबारा दबाइए। जवाब पढ़कर सुनाया जाता है, और फिर चातक अगला सवाल सुनने लगता है। किसी भी समय रोकने के लिए बटन दबाइए।\n\nआवाज़ को भाषिणी (Bhashini) पहचानता है, जो भारत सरकार का भाषा मंच है। अगर भाषिणी तक पहुँच न हो, तो आपके ब्राउज़र की अपनी आवाज़-पहचान इस्तेमाल होती है।',
+    en: 'Tap the microphone and speak. When you stop, your question goes by itself — or tap again to send it straight away. The answer is read aloud, and then Chaatak listens for your next question. Tap the button to stop at any time.\n\nSpeech is recognised by Bhashini, the Government of India’s language platform. If Bhashini cannot be reached, your browser’s own speech recognition is used instead.',
+  },
+  'faq.q.languages': { hi: 'किन भाषाओं में पूछ सकते हैं?', en: 'Which languages can I use?' },
+  'faq.a.languages': {
+    hi: 'हिंदी, अंग्रेज़ी, मराठी, बांग्ला, गुजराती, तमिल और पंजाबी में — और हिंग्लिश में भी — पूछ सकते हैं और जवाब सुन सकते हैं। चातक उसी भाषा और लिपि में जवाब देता है जिसमें आपने पूछा। स्क्रीन पर लिखा हुआ अभी हिंदी और अंग्रेज़ी में है।\n\nभोजपुरी, अवधी, हरियाणवी और राजस्थानी जैसी बोलियाँ समझ में आती हैं, और जवाब मानक हिंदी में दिया जाता है।',
+    en: 'You can ask and hear answers in Hindi, English, Marathi, Bengali, Gujarati, Tamil and Punjabi — and in Hinglish. Chaatak replies in the language and script you used. The screens themselves are in Hindi and English for now.\n\nIt understands dialects such as Bhojpuri, Awadhi, Haryanvi and Rajasthani, and replies in standard Hindi.',
+  },
+
+  'faq.q.recording': { hi: 'मेरी आवाज़ की रिकॉर्डिंग का क्या होता है?', en: 'What happens to my voice recording?' },
+  'faq.a.recording': {
+    hi: 'यह चातक के सर्वर से होकर भाषिणी को भेजी जाती है ताकि इसे शब्दों में बदला जा सके, और चातक इसे अपने पास नहीं रखता। माइक सिर्फ़ तब चालू रहता है जब आप चातक से बात कर रहे हों — जवाब सुनाते समय, रोकने पर, और तीस सेकंड तक चुप्पी रहने पर यह बंद हो जाता है।',
+    en: 'It is sent through Chaatak’s server to Bhashini to be turned into text, and Chaatak does not keep it. The microphone is on only while you are talking to Chaatak — it switches off while the answer is read out, when you tap stop, and after thirty seconds of silence.',
+  },
+  'faq.q.location': { hi: 'क्या चातक मेरी लोकेशन पर नज़र रखता है?', en: 'Does Chaatak track my location?' },
+  'faq.a.location': {
+    hi: 'नहीं। लोकेशन सिर्फ़ तब माँगी जाती है जब किसी सवाल के लिए जगह चाहिए और आपने जगह का नाम नहीं बताया — और आप हमेशा मना करके जगह का नाम लिख सकते हैं। इससे सिर्फ़ आपका शहर या कस्बा पता किया जाता है, फिर लोकेशन हटा दी जाती है: चातक शहर का नाम रखता है, आपकी सटीक जगह नहीं।',
+    en: 'No. Your location is asked for only when a question needs a place and you did not name one — and you can always say no and type a place instead. It is used to find your town and then discarded: Chaatak keeps the town, not your exact position.',
+  },
+  'faq.q.stored': { hi: 'क्या सहेजा जाता है, और कहाँ?', en: 'What is stored, and where?' },
+  'faq.a.stored': {
+    hi: 'बिना साइन इन के, आपकी बातचीत सिर्फ़ इस ब्राउज़र टैब में रहती है और टैब बंद करते ही चली जाती है। साइन इन करने पर आपकी बातचीत, सहेजी गई जगहें और भाषा की सेटिंग आपके खाते में, भारत के सर्वरों पर, सहेजी जाती हैं। आप कभी भी कोई बातचीत मिटा सकते हैं, या खाते के मेनू से अपना खाता और उसमें सब कुछ मिटा सकते हैं।\n\nकुछ सवाल समझने और जवाब लिखने के लिए आपके सवाल का टेक्स्ट एक AI सेवा को भेजा जाता है। मौसम के आंकड़े कभी उससे नहीं आते।',
+    en: 'As a guest, your chat stays in this browser tab and is gone when you close it. If you sign in, your chats, saved places and language settings are kept in your account, on servers in India. You can delete a chat at any time, or delete your account and everything in it from the account menu.\n\nTo understand some questions and write answers, the text of your question is sent to an AI service. The weather numbers never come from it.',
+  },
+
+  'faq.q.limits': { hi: 'किन बातों के लिए चातक पर निर्भर नहीं रहना चाहिए?', en: 'What should I not rely on Chaatak for?' },
+  'faq.a.limits': {
+    hi: 'पूर्वानुमान पूरे दिन का होता है, घंटे-घंटे का नहीं — इसलिए “कल शाम” के सवाल का जवाब पूरे दिन के आंकड़ों से दिया जाता है। चेतावनियाँ पूरे ज़िले के लिए होती हैं। मॉडल के मान बाहर दिख रहे मौसम से अलग हो सकते हैं। बहुत शोर वाली जगह पर आवाज़ ग़लत सुनी जा सकती है — आप हमेशा लिखकर पूछ सकते हैं।\n\nचातक कोई आपातकालीन सेवा नहीं है। ख़तरे में अपने स्थानीय प्रशासन और IMD के निर्देश मानें, और 112 पर कॉल करें।',
+    en: 'Forecasts are for a whole day, not hour by hour, so an answer about “tomorrow evening” reasons from the day’s figures. Warnings cover whole districts. Model values can differ from what you see outside. In a very noisy place speech can be misheard — you can always type.\n\nChaatak is not an emergency service. In danger, follow your local administration and IMD, and call 112.',
+  },
+  'faq.q.offline': { hi: 'क्या यह बिना इंटरनेट के चलता है?', en: 'Does it work without the internet?' },
+  'faq.a.offline': {
+    hi: 'कुछ हद तक। चातक आखिरी जवाब सहेजकर रखता है और बिना इंटरनेट के उसे दिखाता है — यह बताते हुए कि वह कितना पुराना है। नया मौसम या नई चेतावनी इंटरनेट वापस आने पर ही मिल सकती है।',
+    en: 'Partly. Chaatak keeps the last answer it gave and shows it offline, with how old it is. New weather and new warnings need the internet back.',
+  },
 
   /* ---- monitored places ------------------------------------------ */
   'places.count': { hi: '{used} / {limit}', en: '{used} of {limit}' },
