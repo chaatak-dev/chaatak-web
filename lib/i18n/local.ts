@@ -49,25 +49,31 @@ export function languagesSnapshot(): LanguagePreferences {
   try {
     const raw = localStorage.getItem(KEY);
 
-    if (raw === null) {
-      /*
-       * Nothing stored under the new key. Someone who used Chaatak before
-       * the interface and assistant languages existed has a voice choice
-       * under the old one, and it means exactly what it still means — so it
-       * is carried over rather than reset to auto.
-       */
-      const legacy = localStorage.getItem(LEGACY_VOICE_KEY);
-      if (legacy) {
-        const migrated = readPreferences({ ui: 'auto', assistant: 'auto', voice: legacy });
-        cachedRaw = null;
-        cached = migrated;
-        return migrated;
-      }
-    }
+    /*
+     * Nothing stored under the new key. Someone who used Chaatak before the
+     * interface and assistant languages existed has a voice choice under the
+     * old one, and it means exactly what it still means — so it is carried
+     * over rather than reset to auto.
+     */
+    const legacy = raw === null ? localStorage.getItem(LEGACY_VOICE_KEY) : null;
 
-    if (raw !== cachedRaw) {
-      cachedRaw = raw;
-      cached = raw ? readPreferences(JSON.parse(raw)) : DEFAULT_PREFERENCES;
+    /*
+     * The migrated value is cached like any other. It used to be rebuilt on
+     * every call — a new object each time — so for exactly the returning
+     * visitors this branch exists for, React saw the store change on every
+     * render and looped until "Maximum update depth exceeded".
+     */
+    const source = raw ?? (legacy ? `legacy:${legacy}` : null);
+    if (source !== cachedRaw) {
+      const next = raw
+        ? readPreferences(JSON.parse(raw))
+        : legacy
+          ? readPreferences({ ui: 'auto', assistant: 'auto', voice: legacy })
+          : DEFAULT_PREFERENCES;
+      // Only after the parse succeeded: a corrupt value falls through to the
+      // defaults below, every time, rather than half-updating the cache.
+      cachedRaw = source;
+      cached = next;
     }
     return cached;
   } catch {
