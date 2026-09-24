@@ -70,17 +70,4 @@ export interface SpeechSource {
   speak(utterance: Utterance): Speaking;
 }
 
-/**
- * Mic states.
- *
- * `denied` is deliberately separate from `failed`: permission refusal is a
- * normal choice a user makes, and rendering it in a "something went wrong"
- * treatment would contradict that. `unsupported` renders nothing at all.
- */
-export type MicState =
-  | 'idle'
-  | 'listening'
-  | 'processing'
-  | 'failed'
-  | 'denied'
-  | 'unsupported';
+/* The voice session's states live with its state machine, in ./session.ts. */

@@ -12,6 +12,8 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import type { StringKey } from '@/lib/i18n/strings';
+import { useApp } from './AppState';
 import {
   readThemeChoice,
   subscribeTheme,
@@ -29,7 +31,7 @@ const STROKE = {
 
 function SystemIcon() {
   return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
+    <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
       <rect x="2.25" y="3" width="13.5" height="9.5" rx="1.5" {...STROKE} />
       <path d="M6.5 15.25h5" {...STROKE} />
     </svg>
@@ -38,7 +40,7 @@ function SystemIcon() {
 
 function LightIcon() {
   return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
+    <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
       <circle cx="9" cy="9" r="3.4" {...STROKE} />
       <path
         d="M9 1.9v1.7M9 14.4v1.7M1.9 9h1.7M14.4 9h1.7M3.98 3.98l1.2 1.2M12.82 12.82l1.2 1.2M14.02 3.98l-1.2 1.2M5.18 12.82l-1.2 1.2"
@@ -50,7 +52,7 @@ function LightIcon() {
 
 function DarkIcon() {
   return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
+    <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
       <path
         d="M15 10.8A6.4 6.4 0 0 1 7.2 3a6.4 6.4 0 1 0 7.8 7.8Z"
         {...STROKE}
@@ -59,17 +61,20 @@ function DarkIcon() {
   );
 }
 
+/* Labels from the catalogue, like every other word of chrome. They were
+   English literals, so a Hindi interface read out "Match system". */
 const OPTIONS: {
   value: ThemeChoice;
-  label: string;
+  label: StringKey;
   Icon: () => React.ReactElement;
 }[] = [
-  { value: 'system', label: 'Match system', Icon: SystemIcon },
-  { value: 'light', label: 'Light', Icon: LightIcon },
-  { value: 'dark', label: 'Dark', Icon: DarkIcon },
+  { value: 'system', label: 'theme.system', Icon: SystemIcon },
+  { value: 'light', label: 'theme.light', Icon: LightIcon },
+  { value: 'dark', label: 'theme.dark', Icon: DarkIcon },
 ];
 
 export function ThemeToggle() {
+  const { t } = useApp();
   const choice = useSyncExternalStore<ThemeChoice>(
     subscribeTheme,
     readThemeChoice,
@@ -78,7 +83,7 @@ export function ThemeToggle() {
   );
 
   return (
-    <div className="themetoggle" role="group" aria-label="Theme">
+    <div className="themetoggle" role="group" aria-label={t('settings.theme')}>
       {OPTIONS.map(({ value, label, Icon }) => {
         const active = value === choice;
         return (
@@ -87,8 +92,8 @@ export function ThemeToggle() {
             type="button"
             className={`themetoggle__option${active ? ' is-active' : ''}`}
             aria-pressed={active}
-            aria-label={label}
-            title={label}
+            aria-label={t(label)}
+            title={t(label)}
             onClick={() => writeThemeChoice(value)}
           >
             <Icon />

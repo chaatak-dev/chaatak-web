@@ -12,7 +12,7 @@
  * this app and nobody asking "will it rain" should pay to download it.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useApp } from './AppState';
 
@@ -24,12 +24,27 @@ export function MapEntry() {
   const app = useApp();
   const { t, weather } = app;
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
 
   const place = weather.status === 'ready' ? weather.snapshot.place : null;
 
+  // Back to this button when the map closes. A <dialog> that is closed hands
+  // focus back by itself; this one is unmounted instead — the map is too
+  // costly to keep alive — and an unmounted dialog leaves focus on <body>,
+  // at the top of the page, for someone who was in the rail.
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+    } else if (wasOpen.current) {
+      wasOpen.current = false;
+      buttonRef.current?.focus();
+    }
+  }, [open]);
+
   return (
     <>
-      <button type="button" className="mapentry" onClick={() => setOpen(true)}>
+      <button ref={buttonRef} type="button" className="mapentry" onClick={() => setOpen(true)}>
         {/*
           A hairline suggestion of a coastline, not a picture of a map. A
           real preview would mean loading the map to show a thumbnail of the

@@ -621,156 +621,6 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Microphone — the largest element on screen                          */
-/* ------------------------------------------------------------------ */
-
-.mic {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 22px var(--gutter) 4px;
-  text-align: center;
-}
-
-.mic__button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 74px;
-  height: 74px;
-  padding: 0;
-  color: var(--paper);
-  background: var(--accent);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.mic__button:disabled {
-  cursor: default;
-}
-
-.mic__glyph {
-  width: 32px;
-  height: 32px;
-}
-
-/* Listening: a ring, so the state reads without relying on colour alone. */
-.mic--listening .mic__button {
-  box-shadow: 0 0 0 6px var(--accent-tint);
-  animation: mic-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes mic-pulse {
-  50% {
-    box-shadow: 0 0 0 12px var(--accent-tint);
-  }
-}
-
-/* Motion is decoration here; the ring alone carries the state. */
-@media (prefers-reduced-motion: reduce) {
-  .mic--listening .mic__button {
-    animation: none;
-    box-shadow: 0 0 0 9px var(--accent-tint);
-  }
-}
-
-/* Processing and denied are both inert, and look it. */
-.mic--processing .mic__button,
-.mic--denied .mic__button {
-  color: var(--text-soft);
-  background: var(--surface);
-  box-shadow: none;
-}
-
-.mic--denied .mic__button {
-  background: var(--paper);
-  border: 1.5px solid var(--border-control);
-  color: var(--text-faint);
-}
-
-.mic__label {
-  margin-top: 12px;
-}
-
-.mic__label-hi {
-  display: block;
-  font-family: var(--font-deva);
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.mic__label-en {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-soft);
-}
-
-.mic__partial {
-  max-width: 28rem;
-  margin-top: 10px;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text-soft);
-}
-
-.mic__statement {
-  max-width: 28rem;
-  margin-top: 10px;
-}
-
-.mic__statement [lang='hi'] {
-  display: block;
-  font-family: var(--font-deva);
-  font-size: 15.5px;
-  line-height: 1.6;
-  color: var(--text);
-}
-
-.mic__statement-en {
-  display: block;
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--text-soft);
-}
-
-/* ------------------------------------------------------------------ */
-/* Playback                                                            */
-/* ------------------------------------------------------------------ */
-
-.playback {
-  padding: 16px var(--gutter) 0;
-}
-
-.playback__button {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 18px;
-  font-family: var(--font-deva);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--paper);
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.playback__en {
-  font-family: var(--font-latin);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-/* ------------------------------------------------------------------ */
 /* Chat                                                                */
 /*                                                                     */
 /* A conversation, not a search box with a result panel. The composer  */
@@ -972,59 +822,6 @@
   opacity: 0.4;
   cursor: default;
 }
-
-.composer__stopspeech {
-  width: 100%;
-  min-height: 40px;
-  margin-top: 8px;
-  font-family: var(--font-deva);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--paper);
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-/* Paired with a text input, the mic takes the 52px size and sits inline
-   rather than centred. The brand rule sizes it by what it sits beside. */
-.mic--compact {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  padding: 0 0 10px;
-  text-align: left;
-}
-
-.mic--compact .mic__button {
-  width: 52px;
-  height: 52px;
-}
-
-.mic--compact .mic__glyph {
-  width: 23px;
-  height: 23px;
-}
-
-.mic--compact .mic__label {
-  margin-top: 0;
-}
-
-.mic--compact .mic__label-hi {
-  font-size: 14px;
-}
-
-.mic--compact .mic__label-en {
-  font-size: 10px;
-}
-
-.mic--compact .mic__partial,
-.mic--compact .mic__statement {
-  flex-basis: 100%;
-  margin-top: 6px;
-}
-
 
 /* The page is a fixed-height app shell here: the transcript scrolls, the
    composer does not. */
@@ -1361,7 +1158,7 @@ body:has(.chat) {
     padding-top: 12px;
   }
 
-  .mic--compact {
+  .voice {
     padding-bottom: 6px;
   }
 }
@@ -1431,12 +1228,18 @@ body:has(.chat) {
      tree at once. */
   visibility: hidden;
   transform: translateX(-100%);
-  transition: transform 200ms ease, visibility 200ms ease;
+  /* Hidden only once the slide out has finished… */
+  transition: transform 200ms ease, visibility 0s linear 200ms;
 }
 
 .shell--drawer-open .sidebar {
   visibility: visible;
   transform: none;
+  /* …but visible at once on the way in. A transitioned `visibility` is
+     still `hidden` in the frame the drawer opens, and focus cannot be
+     moved into a hidden element — so the drawer opened with focus left
+     behind on the page it had just made inert. */
+  transition: transform 200ms ease, visibility 0s linear 0s;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2518,8 +2321,6 @@ body:has(.chat) {
 .absence__statement,
 .stale__label,
 .stale__statement,
-.mic__label,
-.mic__statement,
 .confirm__headline,
 .confirm__body {
   display: block;
@@ -2589,16 +2390,6 @@ body:has(.chat) {
 .confirm__confirm {
   font-size: 15px;
   font-weight: 600;
-}
-
-.mic__label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-soft);
-}
-
-.mic--compact .mic__label {
-  font-size: 14px;
 }
 
 .absence__label,
@@ -3223,10 +3014,18 @@ body:has(.chat) {
 
 .wcard--cloud { --wcard-from: #d5dade; --wcard-to: #edeeef; }
 .wcard--wet   { --wcard-from: #c3d2dd; --wcard-to: #e3e9ec; }
-.wcard--storm { --wcard-from: #4a4f57; --wcard-to: #6a7078; --wcard-ink: #f2f3f4; }
+/* The light end was #6a7078: the smallest line on it measured 3.17:1. */
+.wcard--storm { --wcard-from: #4a4f57; --wcard-to: #5c6269; --wcard-ink: #f2f3f4; }
 
 /* Night and storm both darken; together they should not go black. */
 .wcard--night.wcard--storm { --wcard-from: #23282f; --wcard-to: #363c44; }
+
+/* Night keeps a dark ground whatever the sky. Cloud and rain used to swap in
+   their pale daytime grounds and keep night's white ink — white on pale blue,
+   the place name and the temperature all but invisible after dark. They only
+   tint the night now. Held by lib/design/wcard.test.ts. */
+.wcard--night.wcard--cloud { --wcard-from: #2e353e; --wcard-to: #414851; }
+.wcard--night.wcard--wet   { --wcard-from: #26303a; --wcard-to: #37424d; }
 
 /* A stale value loses the ground entirely. Colour here means "this is what it
    is like now", and that is exactly what a stale reading cannot claim. */
@@ -3258,7 +3057,9 @@ body:has(.chat) {
 .wcard__where {
   font-size: 11.5px;
   line-height: 1.4;
-  opacity: 0.72;
+  /* 0.72 left this, the smallest line on the card, under 4.5:1 on the storm
+     ground. The lowest opacity here is what wcard.test.ts measures. */
+  opacity: 0.85;
 }
 
 .wcard__temp {
@@ -3521,4 +3322,466 @@ body:has(.chat) {
   font-weight: 600;
   color: var(--text-soft);
   font-variant-numeric: tabular-nums;
+}
+
+
+/* ================================================================== */
+/* Conversation, voice and access pass                                 */
+/* ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Skip link                                                           */
+/*                                                                     */
+/* The first thing a keyboard reaches. The sidebar comes first in the   */
+/* document; without this every visit starts with a walk through the   */
+/* chat history before the question box. Out of flow, so it can never  */
+/* take room from the layout, and on screen only while focused.        */
+/* ------------------------------------------------------------------ */
+
+.skiplink {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transform: translateY(-180%);
+}
+
+.skiplink:focus,
+.skiplink:focus-visible {
+  transform: none;
+  outline-color: var(--text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skiplink {
+    transition: transform 120ms ease;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The voice session                                                   */
+/*                                                                     */
+/* One button: it starts the session and, while the session runs, it   */
+/* is Stop — in the same place, so Stop is never something to look for. */
+/* The state is said in words beside it; the ring and the level bars   */
+/* are decoration, and under reduced motion the bars are not drawn.    */
+/* ------------------------------------------------------------------ */
+
+.voice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 0 0 10px;
+}
+
+.voice__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  color: var(--paper);
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.voice__glyph {
+  width: 23px;
+  height: 23px;
+}
+
+.voice__glyph--stop {
+  width: 20px;
+  height: 20px;
+}
+
+/* Live: a ring in the accent tint says the microphone is open. Never the only
+   signal — the Stop glyph and the status words say it too. */
+.voice--active .voice__button {
+  box-shadow: 0 0 0 5px var(--accent-tint);
+}
+
+.voice--listening .voice__button,
+.voice--speech_detected .voice__button {
+  box-shadow: 0 0 0 8px var(--accent-tint);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .voice__button {
+    transition: box-shadow 160ms ease;
+  }
+}
+
+/* Refused permission is a choice, not a fault: muted, not alarming. */
+.voice--denied .voice__button {
+  color: var(--text-soft);
+  background: var(--paper);
+  border: 1.5px solid var(--border-control);
+}
+
+.voice__text {
+  min-width: 0;
+}
+
+.voice__status {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.voice--idle .voice__status,
+.voice--stopped .voice__status {
+  color: var(--text-soft);
+}
+
+.voice__note {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+.voice__statement {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.voice__partial {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+:lang(hi) .voice__status,
+:lang(hi) .voice__note,
+:lang(hi) .voice__statement {
+  line-height: var(--leading-deva);
+}
+
+.voice__level {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+}
+
+.voice__bar {
+  display: block;
+  width: 4px;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .voice__bar {
+    transition: transform 90ms linear;
+  }
+}
+
+/* A level meter is movement for its own sake. The words carry the state. */
+@media (prefers-reduced-motion: reduce) {
+  .voice__level {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Severity in the conversation                                        */
+/*                                                                     */
+/* An answer given under a warning carries the severity as a band at    */
+/* its top: IMD's colour AND the catalogue's words, never one alone.    */
+/* ------------------------------------------------------------------ */
+
+.turn__severity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+}
+
+.turn__severity--watch {
+  color: var(--sev-watch-ink);
+  background: var(--sev-watch);
+}
+
+.turn__severity--alert {
+  color: var(--sev-alert-ink);
+  background: var(--sev-alert);
+}
+
+.turn__severity--warning {
+  color: var(--sev-warning-ink);
+  background: var(--sev-warning);
+}
+
+.turn__severity-words {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+:lang(hi) .turn__severity-words {
+  font-size: 13.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.turn__severity-action {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ */
+/* Warnings in the rail                                                 */
+/* ------------------------------------------------------------------ */
+
+.rwarn {
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+}
+
+.rwarn--watch {
+  color: var(--sev-watch-ink);
+  background: var(--sev-watch);
+}
+
+.rwarn--alert {
+  color: var(--sev-alert-ink);
+  background: var(--sev-alert);
+}
+
+.rwarn--warning {
+  color: var(--sev-warning-ink);
+  background: var(--sev-warning);
+}
+
+.rwarn__severity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.rwarn__words {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+:lang(hi) .rwarn__words {
+  font-size: 13.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.rwarn__action {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rwarn__list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.rwarn__list li + li {
+  margin-top: 6px;
+}
+
+.rwarn__hazard {
+  display: block;
+  font-weight: 600;
+}
+
+.rwarn__when {
+  display: block;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rwarn__more {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Inside a band the ground is already the severity, so the rule takes the
+   band's own ink — the same treatment as the full-width band. */
+.rwarn .provenance {
+  color: inherit;
+  border-top-color: currentColor;
+}
+
+.rwarn .provenance__mark {
+  color: inherit;
+}
+
+/* Asked, and nothing in force: settled, in words, with the green rule. */
+.rwarn--clear {
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border-left: 3px solid var(--sev-none-line);
+  border-radius: var(--radius);
+}
+
+/* ------------------------------------------------------------------ */
+/* The map as a modal dialog                                           */
+/* ------------------------------------------------------------------ */
+
+dialog.wmap {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text);
+}
+
+/* The UA hides a closed dialog; the map's own display must not undo that. */
+dialog.wmap:not([open]) {
+  display: none;
+}
+
+dialog.wmap::backdrop {
+  background: var(--paper);
+}
+
+.wmap__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--hairline);
+}
+
+.wmap__summary {
+  flex: 1 1 18rem;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.wmap__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.wmap__read {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.wmap__read:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wmap__hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrolling, quietly                                                  */
+/*                                                                     */
+/* Three columns, three scrollers — the minimum: the chats, the          */
+/* conversation, the weather. Each was drawn with the platform's full   */
+/* grey scrollbar track, and side by side they made the page read as    */
+/* three separate browser panes. Scrolling is unchanged — keyboard,     */
+/* wheel and touch — and the scrollbars are still there: thin,          */
+/* trackless and in the product's own neutral, with a reserved gutter   */
+/* so text does not jump sideways when one appears.                     */
+/* ------------------------------------------------------------------ */
+
+.chat__scroll,
+.sidebar__scroll,
+.rail,
+.settings__body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-control) transparent;
+  scrollbar-gutter: stable;
+}
+
+/* Safari reads neither property; it gets the same look the older way. */
+@supports not (scrollbar-color: auto) {
+  .chat__scroll::-webkit-scrollbar,
+  .sidebar__scroll::-webkit-scrollbar,
+  .rail::-webkit-scrollbar,
+  .settings__body::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .chat__scroll::-webkit-scrollbar-track,
+  .sidebar__scroll::-webkit-scrollbar-track,
+  .rail::-webkit-scrollbar-track,
+  .settings__body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .chat__scroll::-webkit-scrollbar-thumb,
+  .sidebar__scroll::-webkit-scrollbar-thumb,
+  .rail::-webkit-scrollbar-thumb,
+  .settings__body::-webkit-scrollbar-thumb {
+    background: var(--border-control);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+}
+
+/* The transcript is focusable so a keyboard can scroll it. Its ring is drawn
+   inside the scroller, where nothing can cover it. */
+.chat__scroll:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ------------------------------------------------------------------ */
+/* A disclosure that is open says so                                   */
+/* ------------------------------------------------------------------ */
+
+.recents__more[aria-expanded="true"],
+.account__button[aria-expanded="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
 }

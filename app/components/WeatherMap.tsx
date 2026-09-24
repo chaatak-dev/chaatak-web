@@ -61,9 +61,25 @@ export function WeatherMap({
   const app = useApp();
   const { t } = app;
 
+  const dialog = useRef<HTMLDialogElement>(null);
   const holder = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+
+  /*
+   * A native modal dialog. `showModal` makes the rest of the page inert,
+   * traps focus inside and closes on Escape — everything the old
+   * `div role="dialog"` claimed and did none of. It is unmounted on close
+   * rather than closed, which a dialog cannot hand focus back from, so
+   * MapEntry returns focus to its own button.
+   */
+  useEffect(() => {
+    const el = dialog.current;
+    if (el && !el.open) el.showModal();
+    return () => {
+      if (el?.open) el.close();
+    };
+  }, []);
 
   const [layerId, setLayerId] = useState<LayerId>('temperature');
   const [data, setData] = useState<LayerData | null>(null);
@@ -285,20 +301,9 @@ export function WeatherMap({
     const onClick = (event: maplibregl.MapMouseEvent) => {
       if (!data || data.points.length === 0) return;
       const { lng, lat } = event.lngLat;
-
       // The nearest sample, which is the honest answer for a gridded field —
       // interpolating would invent a precision the grid does not have.
-      let best: Sample | null = null;
-      let bestSq = Infinity;
-      for (const p of data.points) {
-        const dy = p.lat - lat;
-        const dx = (p.lon - lng) * Math.cos((lat * Math.PI) / 180);
-        const sq = dy * dy + dx * dx;
-        if (sq < bestSq) {
-          bestSq = sq;
-          best = p;
-        }
-      }
+      const best = nearest(data.points, lat, lng);
       if (best) setInspected(best);
     };
 
@@ -309,17 +314,38 @@ export function WeatherMap({
   }, [data]);
 
   const layer = LAYERS[layerId];
+  const layerName = t(LAYER_LABEL[layerId]);
+
+  /** The sample nearest the map's centre — the keyboard's way to inspect. */
+  const readCentre = () => {
+    const instance = map.current;
+    if (!instance || !data || data.points.length === 0) return;
+    const { lng, lat } = instance.getCenter();
+    setInspected(nearest(data.points, lat, lng));
+  };
+
+  // What the canvas shows, as text: the range in view. The picture is for
+  // eyes; this is for everyone.
+  const summary = describe(data, layerName, t);
 
   return (
-    <div className="wmap" role="dialog" aria-modal="true" aria-label={t('rail.openMap')}>
+    <dialog
+      ref={dialog}
+      className="wmap"
+      aria-label={t('rail.openMap')}
+      onCancel={(event) => {
+        // Escape. The parent unmounts this, and the dialog closes with it.
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <div className="wmap__bar">
-        <div className="wmap__layers" role="tablist" aria-label={t('rail.openMap')}>
+        <div className="wmap__layers" role="group" aria-label={t('map.layers')}>
           {LAYER_ORDER.map((id) => (
             <button
               key={id}
               type="button"
-              role="tab"
-              aria-selected={layerId === id}
+              aria-pressed={layerId === id}
               className={`wmap__layer${layerId === id ? ' wmap__layer--on' : ''}`}
               onClick={() => {
                 setLayerId(id);
@@ -332,7 +358,7 @@ export function WeatherMap({
         </div>
 
         <button type="button" className="wmap__close" onClick={onClose} aria-label={t('nav.close')}>
-          <svg viewBox="0 0 16 16" aria-hidden="true">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path
               d="M4 4l8 8M12 4l-8 8"
               fill="none"
@@ -366,6 +392,8 @@ export function WeatherMap({
               {Math.round(inspected.value * 10) / 10}
               <span className="wmap__readout-unit">{data?.unit}</span>
             </span>
+            {/* Laid out on its own line; read with a pause rather than run together. */}
+            <span className="sr-only">, </span>
             <span className="wmap__readout-where">
               {inspected.lat.toFixed(2)}, {inspected.lon.toFixed(2)}
             </span>
@@ -374,8 +402,75 @@ export function WeatherMap({
 
         <Legend layerId={layerId} unit={data?.unit ?? layer.unit} />
       </div>
-    </div>
+
+      {/*
+        The map, in words. Announced politely when the layer or the view
+        changes — once per settled view, never per frame of a pan.
+      */}
+      <div className="wmap__text">
+        <p className="wmap__summary" role="status" aria-live="polite">
+          {summary}
+        </p>
+        <div className="wmap__actions">
+          <button
+            type="button"
+            className="wmap__read"
+            onClick={readCentre}
+            disabled={!data || data.points.length === 0}
+          >
+            {t('map.readCentre')}
+          </button>
+          <p className="wmap__hint">{t('map.keyboardHint')}</p>
+        </div>
+      </div>
+    </dialog>
   );
+}
+
+/** The sample nearest a point: the honest reading of a gridded field. */
+function nearest(points: Sample[], lat: number, lng: number): Sample | null {
+  let best: Sample | null = null;
+  let bestSq = Infinity;
+  for (const p of points) {
+    const dy = p.lat - lat;
+    const dx = (p.lon - lng) * Math.cos((lat * Math.PI) / 180);
+    const sq = dy * dy + dx * dx;
+    if (sq < bestSq) {
+      bestSq = sq;
+      best = p;
+    }
+  }
+  return best;
+}
+
+/** One sentence: the layer and the range in view. */
+function describe(
+  data: LayerData | null,
+  layerName: string,
+  t: ReturnType<typeof useApp>['t'],
+): string {
+  if (!data) return '';
+  if (!data.available) return t('map.noSource');
+  if (data.failed || data.points.length === 0) return t('map.unreachable');
+
+  const round = (v: number) => Math.round(v * 10) / 10;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of data.points) {
+    min = Math.min(min, p.value);
+    max = Math.max(max, p.value);
+  }
+  // The range only. The value at the conversation's place is the rail's to
+  // state, from the snapshot the answer was written from; a grid sample
+  // "near" it would be a second number for the same place, a tenth of a
+  // degree off, with no way for a reader to tell which one to believe.
+  return t('map.summary', {
+    layer: layerName,
+    min: round(min),
+    max: round(max),
+    unit: data.unit,
+    count: data.points.length,
+  });
 }
 
 const LAYER_LABEL = {

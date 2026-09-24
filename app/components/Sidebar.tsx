@@ -134,18 +134,39 @@ function RecentRow({
   const [draft, setDraft] = useState(title ?? '');
   const rowRef = useRef<HTMLLIElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const menuId = `actions-${id}`;
 
   useEffect(() => {
     if (renaming) inputRef.current?.select();
   }, [renaming]);
 
+  /*
+   * A disclosure, not an ARIA menu: a button that shows two ordinary buttons.
+   * `role="menu"` promises arrow keys and managed focus, and a promise the
+   * widget does not keep is worse for a screen-reader user than no promise.
+   * What it does keep: Escape closes it and puts focus back on the button,
+   * and so does a click or a focus anywhere else.
+   */
   useEffect(() => {
     if (!menuOpen) return;
-    const close = (event: MouseEvent) => {
+    const closeOutside = (event: Event) => {
       if (!rowRef.current?.contains(event.target as Node)) setMenuOpen(false);
     };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMenuOpen(false);
+      moreRef.current?.focus();
+    };
+    document.addEventListener('mousedown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('mousedown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+      document.removeEventListener('keydown', escape);
+    };
   }, [menuOpen]);
 
   // An unnamed conversation is named in the interface language, like every
@@ -206,13 +227,15 @@ function RecentRow({
       </button>
 
       <button
+        ref={moreRef}
         type="button"
         className="recents__more"
         aria-label={app.t('nav.actionsFor', { name: label })}
         aria-expanded={menuOpen}
+        aria-controls={menuId}
         onClick={() => setMenuOpen((was) => !was)}
       >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
           <circle cx="8" cy="8" r="1.3" fill="currentColor" />
           <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
@@ -220,10 +243,9 @@ function RecentRow({
       </button>
 
       {menuOpen && (
-        <div className="recents__menu" role="menu">
+        <div className="recents__menu" id={menuId}>
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               setMenuOpen(false);
               setDraft(title ?? '');
@@ -234,10 +256,13 @@ function RecentRow({
           </button>
           <button
             type="button"
-            role="menuitem"
             className="recents__menu-danger"
             onClick={() => {
               setMenuOpen(false);
+              // The dialog returns focus to whatever opened it. That was this
+              // item, which is about to vanish — so the row's button is where
+              // focus waits, and where it lands after Cancel.
+              moreRef.current?.focus();
               setConfirming(true);
             }}
           >

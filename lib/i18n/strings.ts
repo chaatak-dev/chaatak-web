@@ -84,11 +84,14 @@ export const STRINGS = {
 
   'chat.useMyLocation': { hi: 'मेरी जगह इस्तेमाल करें', en: 'Use my location' },
   'chat.jumpToLatest': { hi: 'नीचे जाएँ', en: 'Jump to latest' },
+  'chat.suggestions': { hi: 'पूछने के लिए कुछ सवाल', en: 'Questions to start with' },
+  'nav.skipToChat': { hi: 'सीधे बातचीत पर जाएँ', en: 'Skip to the conversation' },
+  'nav.sidebar': { hi: 'बातचीत और जगहें', en: 'Chats and locations' },
+  'nav.closeMenu': { hi: 'मेनू बंद करें', en: 'Close menu' },
 
   'composer.placeholder': { hi: 'कुछ भी पूछें…', en: 'Ask anything…' },
   'composer.label': { hi: 'मौसम के बारे में पूछें', en: 'Ask about the weather' },
   'composer.send': { hi: 'भेजें', en: 'Send' },
-  'composer.stopSpeaking': { hi: 'बोलना बंद करें', en: 'Stop speaking' },
 
   /* ---- absence and staleness ------------------------------------- */
   'offline.nothingSaved': { hi: 'कोई सहेजी गई जानकारी नहीं', en: 'Nothing saved' },
@@ -161,6 +164,13 @@ export const STRINGS = {
     en: 'Air quality is not available.',
   },
   'rail.openMap': { hi: 'मौसम का नक्शा', en: 'Weather map' },
+  'rail.metric': { hi: 'क्या दिखाएँ', en: 'Show' },
+  'rail.noWarning': { hi: 'IMD की कोई चेतावनी लागू नहीं', en: 'No IMD warning in force' },
+  'rail.warningsUnavailable': {
+    hi: 'IMD की चेतावनियाँ अभी उपलब्ध नहीं हैं।',
+    en: 'IMD warnings are not available right now.',
+  },
+  'rail.moreWarnings': { hi: '{count} और चेतावनियाँ', en: '{count} more warnings' },
 
   /* ---- the map ------------------------------------------------------ */
   'map.cloud': { hi: 'बादल', en: 'Cloud' },
@@ -177,6 +187,16 @@ export const STRINGS = {
    * drawn; this one says the source it does have did not answer just now. A
    * reader can act on the second and only give up on the first.
    */
+  'map.layers': { hi: 'नक़्शे की परतें', en: 'Map layers' },
+  'map.summary': {
+    hi: '{layer}: दिख रहे हिस्से में {min} से {max} {unit} ({count} जगहों के आँकड़े)।',
+    en: '{layer} in view: {min} to {max} {unit}, from {count} points.',
+  },
+  'map.readCentre': { hi: 'बीच की जगह का मान पढ़ें', en: 'Read the value at the centre' },
+  'map.keyboardHint': {
+    hi: 'नक़्शे पर जाकर तीर वाली कुंजियों से हिलाएँ, + और − से पास-दूर करें।',
+    en: 'Focus the map, then use the arrow keys to move and + and − to zoom.',
+  },
   'map.unreachable': {
     hi: 'स्रोत ने अभी जवाब नहीं दिया। नक़्शा हिलाकर दोबारा कोशिश करें।',
     en: 'The source did not answer just now. Move the map to try again.',
@@ -201,19 +221,42 @@ export const STRINGS = {
   'provenance.sourceLabel': { hi: 'स्रोत', en: 'Source' },
 
   /* ---- the microphone -------------------------------------------- */
-  'mic.idle': { hi: 'बोलकर पूछें', en: 'Ask by voice' },
-  'mic.listening': { hi: 'सुन रहे हैं…', en: 'Listening…' },
-  'mic.processing': { hi: 'जाँच रहे हैं…', en: 'Checking…' },
-  'mic.failed': { hi: 'सुनाई नहीं दिया', en: 'Not heard' },
   'mic.denied': { hi: 'माइक बंद है', en: 'Microphone off' },
-  'mic.failedBody': {
-    hi: 'कुछ सुनाई नहीं दिया। फिर से बोलें, या लिखकर पूछें।',
-    en: 'Nothing was heard. Try again, or type your question.',
+
+  /* ---- the voice session ------------------------------------------- */
+  /* A conversation held by talking: started once, ended with Stop. Each
+     state is said in words, because a pulsing ring says nothing to a
+     screen reader, to someone who has turned animation off, or in sunlight. */
+  'voice.start': { hi: 'बोलकर बात करें', en: 'Talk to Chaatak' },
+  'voice.stop': { hi: 'बोलना बंद करें', en: 'Stop voice' },
+  'voice.requesting': { hi: 'माइक की अनुमति दें…', en: 'Allow the microphone…' },
+  'voice.listening': { hi: 'सुन रहे हैं — बोलिए', en: 'Listening — just speak' },
+  'voice.hearing': { hi: 'आपकी बात सुन रहे हैं…', en: 'Hearing you…' },
+  'voice.processing': { hi: 'जाँच रहे हैं…', en: 'Checking…' },
+  'voice.speaking': { hi: 'बोल रहे हैं — बीच में बोल सकते हैं', en: 'Speaking — talk over me to interrupt' },
+  'voice.stopped': { hi: 'आवाज़ बंद', en: 'Voice off' },
+  'voice.notHeard': { hi: 'सुनाई नहीं दिया — फिर से बोलिए', en: 'Didn’t catch that — say it again' },
+  'voice.deniedBody': {
+    hi: 'माइक की अनुमति बंद है। ब्राउज़र की साइट सेटिंग में अनुमति दें, या नीचे लिखकर पूछें।',
+    en: 'Microphone permission is off. Allow it in your browser’s site settings, or type your question below.',
   },
-  'mic.deniedBody': {
-    hi: 'माइक की अनुमति नहीं है। नीचे लिखकर पूछें।',
-    en: 'Microphone permission is off. Type your question below.',
+  'voice.noMicrophoneBody': {
+    hi: 'कोई माइक नहीं मिला। नीचे लिखकर पूछें।',
+    en: 'No microphone was found. Type your question below.',
   },
+  'voice.failedBody': {
+    hi: 'सुनते समय कुछ गड़बड़ हुई। फिर से कोशिश करने के लिए माइक दबाएँ, या लिखकर पूछें।',
+    en: 'Something went wrong while listening. Tap the microphone to try again, or type.',
+  },
+  'voice.auto': { hi: 'भाषा अपने आप पहचानी जाती है', en: 'Language detected automatically' },
+  'voice.in': { hi: '{language} में सुन रहे हैं', en: 'Listening in {language}' },
+  /* The browser's own recogniser cannot detect a language, so it is told
+     which one to expect — and the person is told which one that is. */
+  'voice.fallback': {
+    hi: 'इस ब्राउज़र में भाषा अपने आप नहीं पहचानी जाती — {language} में सुन रहे हैं।',
+    en: 'This browser cannot detect the language — listening in {language}.',
+  },
+  'voice.level': { hi: 'आवाज़ का स्तर', en: 'Input level' },
 
   /* ---- monitored places ------------------------------------------ */
   'places.count': { hi: '{used} / {limit}', en: '{used} of {limit}' },
@@ -346,8 +389,8 @@ export const STRINGS = {
     en: 'Auto replies in whichever language and script you asked in.',
   },
   'settings.voiceHint': {
-    hi: 'अपने आप चुनने पर आवाज़ आपकी बाकी भाषा के साथ चलती है।',
-    en: 'Auto follows your other language choices.',
+    hi: 'अपने आप चुनने पर आप जिस भाषा में बोलें, चातक वही पहचानकर उसी में जवाब देता है।',
+    en: 'Auto recognises the language you speak and answers in it.',
   },
   'settings.uiBorrowed': {
     hi: 'चातक की स्क्रीन अभी {language} में नहीं है, इसलिए यह {shown} में दिख रही है। जवाब और आवाज़ फिर भी आपकी चुनी भाषा में आएँगे।',
@@ -358,6 +401,9 @@ export const STRINGS = {
     en: 'Official warning levels stay in English — translated by hand, never by machine.',
   },
   'settings.theme': { hi: 'रंग-रूप', en: 'Appearance' },
+  'theme.system': { hi: 'सिस्टम जैसा', en: 'Match system' },
+  'theme.light': { hi: 'हल्का', en: 'Light' },
+  'theme.dark': { hi: 'गहरा', en: 'Dark' },
 
   'alerts.enableDevice': {
     hi: 'इस डिवाइस पर भी सूचना दें',

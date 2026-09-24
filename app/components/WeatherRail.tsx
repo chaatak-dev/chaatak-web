@@ -22,11 +22,17 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useApp } from './AppState';
 import { WeatherCard } from './WeatherCard';
 import { MapEntry } from './MapEntry';
+import { Provenance } from './Provenance';
 import { freshness } from '@/lib/weather/freshness';
 import { ageLabel } from '@/lib/offline/cache';
 import { currentPosition, geoSupported } from '@/lib/geo';
 import { fetchAirQuality, type AirQualityState } from '@/lib/weather/context';
 import { conditionFor } from '@/lib/weather/wmo';
+import { hazardText } from '@/lib/weather/imd-codes';
+import { warningsInForce } from '@/lib/weather/snapshot';
+import { severityAction, severityWords } from '@/lib/alerts/templates';
+import { formatIstWindow } from '@/lib/format';
+import type { WeatherSnapshot } from '@/lib/weather/api';
 import type { Measurement } from '@/lib/weather/types';
 
 /**
@@ -144,6 +150,11 @@ export function WeatherRail() {
 
   return (
     <div className="rail__body">
+      <h2 className="sr-only">{t('rail.title')}</h2>
+
+      {/* Severity first: the band leads the rail as it leads every surface. */}
+      <RailWarnings snapshot={snapshot} />
+
       <WeatherCard
         place={snapshot.place}
         condition={condition}
@@ -226,13 +237,17 @@ export function WeatherRail() {
 
       <MonitorControl />
 
-      <div className="rail__metrics" role="tablist" aria-label={t('rail.title')}>
+      {/*
+        A set of pressed buttons, not tabs: there are no tab panels for them
+        to own, and a tab list promises arrow keys it would not keep. Each is
+        an ordinary button that says whether it is on.
+      */}
+      <div className="rail__metrics" role="group" aria-label={t('rail.metric')}>
         {METRICS.map((m) => (
           <button
             key={m.key}
             type="button"
-            role="tab"
-            aria-selected={metric === m.key}
+            aria-pressed={metric === m.key}
             className={`rail__metric${metric === m.key ? ' rail__metric--on' : ''}`}
             onClick={() => setMetric(m.key)}
           >
@@ -246,6 +261,59 @@ export function WeatherRail() {
       <MapEntry />
     </div>
   );
+}
+
+/**
+ * IMD's warnings for the place, as the first thing in the rail.
+ *
+ * In force: a band in the severity's colour AND its words — from the alert
+ * catalogue, never from a model — then the hazards and their windows, loudest
+ * first, and IMD's own provenance. Nothing in force: a plain settled line.
+ * Could not ask: said so, because silence would read as an all-clear.
+ */
+function RailWarnings({ snapshot }: { snapshot: WeatherSnapshot }) {
+  const { t, languages } = useApp();
+  const warnings = snapshot.warnings;
+  const ui = languages.ui;
+
+  if (Array.isArray(warnings) && warnings.length > 0) {
+    const sorted = warningsInForce(warnings);
+    const top = sorted[0];
+    const shown = sorted.slice(0, 3);
+    return (
+      <section className={`rwarn rwarn--${top.severity}`}>
+        <p className="rwarn__severity">
+          <span className="rwarn__words">{severityWords(top.severity, ui)}</span>
+          <span className="rwarn__action">{severityAction(top.severity, ui)}</span>
+        </p>
+        <ul className="rwarn__list">
+          {shown.map((w) => (
+            <li key={w.id}>
+              <span className="rwarn__hazard">{hazardText(w.code, ui) || w.code}</span>
+              <span className="rwarn__when">{formatIstWindow(w.validFrom, w.validTo)}</span>
+            </li>
+          ))}
+        </ul>
+        {sorted.length > shown.length && (
+          <p className="rwarn__more">{t('rail.moreWarnings', { count: sorted.length - shown.length })}</p>
+        )}
+        <Provenance
+          source={top.provenance.source}
+          nature={top.provenance.nature ?? 'bulletin'}
+          timestamp={top.provenance.issuedAt}
+          basis={top.provenance.timeBasis}
+          timeZone={snapshot.place.timezone}
+          severity={top.severity}
+        />
+      </section>
+    );
+  }
+
+  if (!Array.isArray(warnings) && warnings.kind === 'noWarning') {
+    return <p className="rwarn rwarn--clear">{t('rail.noWarning')}</p>;
+  }
+
+  return <p className="rail__note">{t('rail.warningsUnavailable')}</p>;
 }
 
 /**
@@ -300,6 +368,10 @@ function MonitorControl() {
 
   if (weather.status !== 'ready') return null;
   const { place } = weather.snapshot;
+
+  // Accounts switched off on this deployment: there is nothing to sign in
+  // to, so nothing is offered — not a prompt pointing at a missing button.
+  if (!app.configured) return null;
 
   if (!app.user) {
     return <p className="rail__monitor-note">{t('rail.monitorSignIn')}</p>;

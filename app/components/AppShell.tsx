@@ -10,17 +10,29 @@
  * The drawer is rendered at every width rather than mounted and unmounted on
  * a breakpoint. A component that only exists on small screens is a component
  * that is only tested on small screens, and this one holds the account menu.
+ *
+ * AS A DRAWER IT IS MODAL, and behaves like one: focus moves into it when it
+ * opens, the page behind it is inert — not merely covered — so Tab cannot
+ * wander underneath the scrim, Escape closes it, and focus returns to the
+ * button that opened it.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ChatView } from './ChatView';
 import { Sidebar } from './Sidebar';
 import { WeatherRail } from './WeatherRail';
 import { useApp } from './AppState';
 
+/** The width below which the sidebar is a drawer. Matches the CSS. */
+const DRAWER_QUERY = '(max-width: 1023.98px)';
+
 export function AppShell() {
   const app = useApp();
-  const { drawerOpen, setDrawerOpen } = app;
+  const { drawerOpen, setDrawerOpen, t } = app;
+  const mainRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   /*
    * The shell follows the VISUAL viewport, not the layout one.
@@ -58,55 +70,85 @@ export function AppShell() {
     };
   }, []);
 
-  // Escape closes it, the same as every other overlay in the product.
+  // The drawer as a modal: Escape, inert background, focus in and back out.
   useEffect(() => {
-    if (!drawerOpen) return;
+    const narrow = window.matchMedia(DRAWER_QUERY).matches;
+    if (!drawerOpen || !narrow) return;
+
+    openerRef.current = document.activeElement as HTMLElement | null;
+    const behind = [mainRef.current, railRef.current].filter((el): el is HTMLElement => el !== null);
+    for (const el of behind) el.inert = true;
+
+    // Into the drawer: its first control, which is the close button.
+    const first = sidebarRef.current?.querySelector<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select, [tabindex]:not([tabindex="-1"])',
+    );
+    first?.focus();
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setDrawerOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      for (const el of behind) el.inert = false;
+      // Back to where the person was — the menu button, usually.
+      const opener = openerRef.current;
+      if (opener && document.contains(opener)) opener.focus();
+    };
   }, [drawerOpen, setDrawerOpen]);
 
   return (
     <div className={`shell${drawerOpen ? ' shell--drawer-open' : ''}`}>
+      {/*
+        The first thing a keyboard reaches. The sidebar comes first in the
+        document, and without this every visit starts with a walk through
+        the chat history before the question box.
+      */}
+      <a className="skiplink" href="#composer-input">
+        {t('nav.skipToChat')}
+      </a>
+
       {/*
         Hidden with `visibility` rather than only moved off-screen while it is
         a closed drawer. A transform alone leaves every control inside it
         focusable, and the first Tab out of the composer lands in an invisible
         menu. `visibility: hidden` takes it out of the tab order and out of the
         accessibility tree at the same time, in CSS, at the one breakpoint
-        where it is a drawer at all — which `inert` cannot do without a media
-        query in JavaScript.
+        where it is a drawer at all.
       */}
-      <nav className="sidebar" aria-label="Chats and locations">
+      <nav
+        id="sidebar"
+        ref={sidebarRef}
+        className="sidebar"
+        aria-label={t('nav.sidebar')}
+      >
         <Sidebar />
       </nav>
 
       {/*
-        The scrim. A button rather than a div: closing the drawer by tapping
-        beside it is a real action and belongs to something focusable.
+        The scrim. Closing the drawer by tapping beside it is a pointer
+        affordance; the keyboard has Escape and the close button, so the scrim
+        itself stays out of the tab order and out of the accessibility tree.
       */}
-      <button
-        type="button"
+      <div
         className="shell__scrim"
         onClick={() => setDrawerOpen(false)}
-        tabIndex={drawerOpen ? 0 : -1}
-        aria-label="Close menu"
-        aria-hidden={!drawerOpen}
+        aria-hidden="true"
       />
 
-      <div className="shell__main">
+      <div className="shell__main" ref={mainRef}>
         {/*
           Keyed on a DELIBERATE move to another conversation, so switching
           remounts the view and starting one does not.
 
           The remount is the reset: the standing place, the half-typed
-          question, the mic and the "which place?" state all belong to the
-          conversation that was open, and carrying them into another one would
-          answer the next question about the last conversation's district. An
-          effect that cleared them would do the same thing later and less
-          reliably.
+          question, the voice session and the "which place?" state all belong
+          to the conversation that was open, and carrying them into another
+          one would answer the next question about the last conversation's
+          district. An effect that cleared them would do the same thing later
+          and less reliably.
 
           `app.activeId` looks like the right key and is not — the first
           message in a new chat takes it from null to a uuid, which would
@@ -121,13 +163,8 @@ export function AppShell() {
         about. Present only where there is room for it — below 1280 the
         conversation is the whole point of the screen, and a weather panel
         stacked above it would push the transcript off.
-
-        Rendered inside the shell rather than inside the chat column so it is
-        a sibling of the conversation, not a child of it: it survives a
-        conversation switch, and the column that scrolls stays the one that
-        should.
       */}
-      <aside className="rail" aria-label={app.t('rail.title')}>
+      <aside className="rail" aria-label={t('rail.title')} ref={railRef}>
         <WeatherRail />
       </aside>
     </div>

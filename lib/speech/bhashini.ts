@@ -22,6 +22,7 @@ import type {
   Utterance,
 } from './types';
 import { encodePcm16Wav } from './wav';
+import { webSpeech } from './web-speech';
 
 /** Dhruva's conformer models are trained at 16kHz. */
 const TARGET_RATE = 16_000;
@@ -191,6 +192,18 @@ export const bhashiniSpeech: SpeechSource = {
     const controller = new AbortController();
     let audio: HTMLAudioElement | null = null;
     let url: string | null = null;
+    let fallback: Speaking | null = null;
+
+    /**
+     * The browser's own voice, when Bhashini could not synthesise. Silence
+     * after a spoken question reads as broken; a plainer voice does not.
+     */
+    const speakLocally = async (text: string, lang: SpeechLang) => {
+      if (controller.signal.aborted || !webSpeech.supports().speak) return;
+      fallback = webSpeech.speak([{ text, lang }]);
+      await fallback.done;
+      fallback = null;
+    };
 
     const done = (async () => {
       for (const segment of utterance) {
@@ -206,10 +219,14 @@ export const bhashiniSpeech: SpeechSource = {
             body: JSON.stringify({ text, lang: segment.lang }),
             signal: controller.signal,
           });
-          if (!res.ok) return;
+          if (!res.ok) {
+            await speakLocally(text, segment.lang);
+            continue;
+          }
           blob = await res.blob();
         } catch {
-          return;
+          if (!controller.signal.aborted) await speakLocally(text, segment.lang);
+          continue;
         }
 
         if (controller.signal.aborted) return;
@@ -236,6 +253,7 @@ export const bhashiniSpeech: SpeechSource = {
       cancel: () => {
         controller.abort();
         audio?.pause();
+        (fallback as Speaking | null)?.cancel();
         if (url) URL.revokeObjectURL(url);
       },
     };

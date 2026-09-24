@@ -12,9 +12,9 @@
  *   voice      what the recogniser listens in and the voice reads back
  *
  * Each is `auto` by default, and `auto` means something different and
- * specific for each — detection for the UI, mirror-the-user for the
- * assistant, follow-the-choice for voice. None of them ever changes because
- * another one did.
+ * specific for each — the device's languages for the UI, the language of
+ * each turn for the assistant, and the language actually SPOKEN for voice,
+ * detected per utterance. None of them ever changes because another one did.
  *
  * Resolution is pure and lives here rather than in a component, so the rules
  * can be asserted rather than inferred from render order.
@@ -139,8 +139,18 @@ export type ResolvedLanguages = {
    * per-turn decision made from the question itself.
    */
   assistant: LanguagePreference;
-  /** What the recogniser listens in. Always concrete; speech needs a locale. */
+  /**
+   * The voice language: the one chosen, or — on auto — the language to start
+   * from. Always concrete, because some engines (the browser's own
+   * recogniser) cannot listen without a locale.
+   */
   voice: LanguageCode;
+  /**
+   * Voice is on auto: the language someone SPEAKS is detected per turn, and
+   * `voice` is only where detection starts. Nobody should have to open a
+   * setting to switch from Hindi to English mid-conversation.
+   */
+  voiceAuto: boolean;
 };
 
 /**
@@ -179,6 +189,7 @@ export function resolveLanguages(
     uiIsBorrowed: uiChoice !== ui,
     assistant: preferences.assistant,
     voice,
+    voiceAuto: preferences.voice === 'auto',
   };
 }
 

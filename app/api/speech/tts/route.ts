@@ -10,6 +10,7 @@
  * hear is a failed warning and the fix belongs where it is guaranteed to run.
  */
 
+import { isLanguageCode } from '@/lib/i18n/languages';
 import { bhashiniConfigured, bhashiniTts } from '@/lib/speech/bhashini-server';
 import type { SpeechLang } from '@/lib/speech/types';
 import { toPcm16Wav } from '@/lib/speech/wav';
@@ -39,7 +40,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ kind: 'failed', reason: 'text too long' }, { status: 413 });
   }
 
-  const lang: SpeechLang = body.lang === 'en' ? 'en' : 'hi';
+  // Any of the seven. This used to coerce everything but English to Hindi,
+  // so a Tamil answer was read out by the Hindi voice.
+  if (!isLanguageCode(body.lang)) {
+    return Response.json({ kind: 'failed', reason: 'unknown language' }, { status: 400 });
+  }
+  const lang: SpeechLang = body.lang;
   const outcome = await bhashiniTts(text, lang);
   if (outcome.kind === 'failed') {
     return Response.json(outcome, { status: 502 });

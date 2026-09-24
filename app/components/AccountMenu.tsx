@@ -52,26 +52,43 @@ export function AccountMenu() {
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
   const blockRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // A menu that stays open after a click elsewhere is a menu that covers the
-  // thing that was clicked.
+  /*
+   * A disclosure: a button that shows a group of ordinary buttons. It is not
+   * an ARIA menu, because a menu promises arrow keys and managed focus.
+   * What it does do: close on a click or a focus elsewhere — a menu left open
+   * covers what was clicked — and on Escape, returning focus to the button.
+   */
   useEffect(() => {
     if (!open) return;
 
-    const close = (event: MouseEvent) => {
+    const close = (event: Event) => {
       if (!blockRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
     };
 
     document.addEventListener('mousedown', close);
+    document.addEventListener('focusin', close);
     document.addEventListener('keydown', escape);
     return () => {
       document.removeEventListener('mousedown', close);
+      document.removeEventListener('focusin', close);
       document.removeEventListener('keydown', escape);
     };
   }, [open]);
+
+  /** Close the menu and keep focus where a dialog can return it. */
+  const choose = (next: () => void) => {
+    setOpen(false);
+    buttonRef.current?.focus();
+    next();
+  };
 
   /*
    * Arriving from the Telegram bot's "Connect" button: /?connect=telegram.
@@ -140,15 +157,11 @@ export function AccountMenu() {
   return (
     <div className="account" ref={blockRef}>
       {open && (
-        <div className="account__menu" role="menu">
+        <div className="account__menu" id="account-actions">
           <button
             type="button"
             className="account__action"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setSettingsOpen(true);
-            }}
+            onClick={() => choose(() => setSettingsOpen(true))}
           >
             {app.t('settings.open')}
           </button>
@@ -156,11 +169,7 @@ export function AccountMenu() {
           <button
             type="button"
             className="account__action"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setPending('delete-chats');
-            }}
+            onClick={() => choose(() => setPending('delete-chats'))}
           >
             {app.t('account.deleteAll')}
           </button>
@@ -168,11 +177,7 @@ export function AccountMenu() {
           <button
             type="button"
             className="account__action"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setPending('signout');
-            }}
+            onClick={() => choose(() => setPending('signout'))}
           >
             {app.t('account.signOut')}
           </button>
@@ -180,11 +185,7 @@ export function AccountMenu() {
           <button
             type="button"
             className="account__action account__action--danger"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setPending('delete-account');
-            }}
+            onClick={() => choose(() => setPending('delete-account'))}
           >
             {app.t('account.delete')}
           </button>
@@ -192,11 +193,13 @@ export function AccountMenu() {
       )}
 
       <button
+        ref={buttonRef}
         type="button"
         className="account__button"
         aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={app.t('account.menu')}
+        aria-controls="account-actions"
+        // The name is the person, the role is the menu: "Account, Yash Sharma".
+        aria-label={`${app.t('account.menu')}, ${display}`}
         onClick={() => setOpen((was) => !was)}
       >
         {user.avatarUrl ? (

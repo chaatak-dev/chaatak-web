@@ -11,6 +11,7 @@
  */
 
 import { cached } from '../cache';
+import { chooseTranscript, readsAsNative } from './detect';
 import type { SpeechLang } from './types';
 
 const ULCA_PIPELINE_URL =
@@ -119,6 +120,74 @@ export async function bhashiniAsr(
       reason: error instanceof Error ? error.name : 'network error',
     };
   }
+}
+
+export type AutoOutcome =
+  | {
+      kind: 'heard';
+      transcript: string;
+      lang: SpeechLang;
+      confidence: 'high' | 'medium' | 'low';
+      /** Why that language — for the log, never for the person. */
+      reason: string;
+      /** Which recognisers were asked. */
+      asked: SpeechLang[];
+    }
+  | { kind: 'heardNothing' }
+  | { kind: 'failed'; reason: string };
+
+/**
+ * Transcribe without being told the language: ask the candidate recognisers
+ * and judge what each heard — see ./detect.ts for why that is evidence.
+ *
+ * A conversation already confidently in an Indic language asks its own
+ * recogniser first, and accepts the result when it reads as that language —
+ * one round trip. Otherwise, or when it does not read as native, the
+ * candidates are asked in parallel, so detection costs roughly one round
+ * trip of wall time rather than three.
+ */
+export async function transcribeAuto(
+  audioBase64: string,
+  samplingRate: number,
+  opts: { candidates: SpeechLang[]; prior?: SpeechLang | null; fastPath?: boolean },
+): Promise<AutoOutcome> {
+  const { candidates, prior } = opts;
+  const results = new Map<SpeechLang, AsrOutcome>();
+
+  if (opts.fastPath && prior && prior !== 'en') {
+    const first = await bhashiniAsr(audioBase64, prior, samplingRate);
+    results.set(prior, first);
+    if (first.kind === 'heard' && readsAsNative({ lang: prior, transcript: first.transcript })) {
+      return {
+        kind: 'heard',
+        transcript: first.transcript,
+        lang: prior,
+        confidence: 'high',
+        reason: `read as ${prior} on the conversation's own recogniser`,
+        asked: [prior],
+      };
+    }
+  }
+
+  const rest = candidates.filter((l) => !results.has(l));
+  const answers = await Promise.all(rest.map((l) => bhashiniAsr(audioBase64, l, samplingRate)));
+  rest.forEach((l, i) => results.set(l, answers[i]));
+
+  const heard = [...results.entries()]
+    .filter((entry): entry is [SpeechLang, Extract<AsrOutcome, { kind: 'heard' }>] => entry[1].kind === 'heard')
+    .map(([lang, outcome]) => ({ lang, transcript: outcome.transcript }));
+
+  const detection = chooseTranscript(heard, prior);
+  if (detection) {
+    return { kind: 'heard', ...detection, asked: [...results.keys()] };
+  }
+
+  // Nothing heard anywhere: silence, if any recogniser said so; otherwise
+  // every one of them failed, and that is a failure.
+  const outcomes = [...results.values()];
+  if (outcomes.some((o) => o.kind === 'heardNothing')) return { kind: 'heardNothing' };
+  const failed = outcomes.find((o): o is Extract<AsrOutcome, { kind: 'failed' }> => o.kind === 'failed');
+  return { kind: 'failed', reason: failed?.reason ?? 'no recogniser answered' };
 }
 
 export type TtsOutcome =
