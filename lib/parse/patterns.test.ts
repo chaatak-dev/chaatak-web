@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractPlace, patternParser } from './patterns';
+import { extractPlace, patternParser, placeEvidence } from './patterns';
 import type { ParseContext, ParsedQuery } from './types';
 
 const HI: ParseContext = { lang: 'hi' };
@@ -83,8 +83,10 @@ test('the place is a verbatim slice — never normalised or transliterated', asy
 test('a keyword inside a place name is not stripped', async () => {
   // "Kalyan" begins with "kal" (tomorrow) and "Kota" is not "ko" + "ta".
   // Without a proper boundary these become "yan" and "ta".
-  assert.equal(extractPlace('Kalyan mein mausam'), 'Kalyan');
   assert.equal(extractPlace('Kota ka mausam'), 'Kota');
+  // Kalyan is not in the gazetteer (Kalyan-Dombivli is), so it is not
+  // claimed — but the name offered onward is still whole.
+  assert.deepEqual(placeEvidence('Kalyan mein mausam'), { kind: 'unsure', candidate: 'Kalyan' });
 });
 
 /* ------------------------------------------------------------------ */
@@ -301,9 +303,10 @@ test('an apostrophe does not push a question to the model', async () => {
 
 test('a place keeps an apostrophe that belongs to it', async () => {
   // Only contraction tails are blanked, and only with nothing after them, so
-  // a name that genuinely contains an apostrophe survives verbatim.
-  const q = await parsed("will it rain in O'Valley", { lang: 'en' });
-  assert.equal(q.place, "O'Valley");
+  // a name that genuinely contains an apostrophe survives verbatim. Unknown
+  // to the gazetteer, it is not claimed here — it is passed on whole.
+  assert.deepEqual(placeEvidence("will it rain in O'Valley"), { kind: 'unsure', candidate: "O'Valley" });
+  assert.equal(await patternParser.parse("will it rain in O'Valley", { lang: 'en' }), null);
 });
 
 test('a contraction in a non-weather sentence still defers', async () => {

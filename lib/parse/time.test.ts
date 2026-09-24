@@ -76,7 +76,7 @@ test('yesterday, and the day before', () => {
 test('last night is the last 24 hours; tomorrow night is not', () => {
   assert.deepEqual(window('did it rain last night?'), { kind: 'pastHours', hours: 24 });
   assert.deepEqual(window('कल रात बारिश हुई थी?'), { kind: 'pastHours', hours: 24 });
-  assert.deepEqual(window('कल रात बारिश होगी?'), { kind: 'day', offset: 1 });
+  assert.deepEqual(window('कल रात बारिश होगी?'), { kind: 'day', offset: 1, part: 'night' });
   assert.deepEqual(window('will it rain overnight?'), null);
 });
 

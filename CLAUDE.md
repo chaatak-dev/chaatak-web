@@ -273,7 +273,20 @@ weather question — is decided first (`lib/chat/understand.ts`), and only a
 turn that needs a place gets one resolved. "wassup", "ohh really" and "that's
 crazy" are conversation, answered without a fetch; a failed parse is asked
 about and **never geocoded as a whole message**. A place the model names must
-be a verbatim slice of what the user wrote. The conversation carries forward
+be a verbatim slice of what the user wrote.
+
+**A place is claimed on evidence, never on position.** A particle marks a noun,
+not a place: "दोस्त के साथ" is *with* a friend, "office mein" is in an office. So
+the local reader claims only a gazetteer-known name in a real place slot (के /
+का are slots only before weather, time or nearness words), a known name
+standing alone, or the answer to "which place?" (`lib/parse/place-extract.ts`).
+Anything unconfirmed goes to the classifier, which sees the conversation; it is
+never shortened to a known name ("Rampur Khas" is not Rampur), never fuzzily
+repaired inside a sentence ("mandir" is one edit from Mandi), and never
+geocoded. A weather question that names no place — advice included ("can I
+play cricket tomorrow evening?") — carries the conversation's, and a part of
+the day ("कल शाम") narrows the window without inventing hourly values. The
+conversation carries forward
 in the `StandingQuery` — place, topic, window, a question still waiting for a
 place, the language — and the server distrusts it: the place is re-resolved
 from its name every turn, and a severity in it can only tighten the gate.
@@ -559,6 +572,7 @@ Kubernetes. None of them change whether a farmer gets a warning.
 - [ ] A stale observation never renders as the present
 - [ ] Every value states its nature: observation, model, bulletin, archived forecast or reanalysis
 - [ ] A conversational turn is never geocoded
+- [ ] An unconfirmed word is never geocoded — a noun beside a particle is not a place
 - [ ] A history question never falls back to now or the forecast
 - [ ] The map draws no boundary IMD did not publish
 - [ ] A modelled European index is never called India's official AQI

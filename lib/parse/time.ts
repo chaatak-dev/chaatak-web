@@ -19,7 +19,7 @@
  * Whole words only, in every script — the standing rule.
  */
 
-import type { TimeWindow } from './types';
+import type { DayPart, TimeWindow } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Matching                                                            */
@@ -146,6 +146,47 @@ const LAST_EVENT = [
 
 /** A question word that asks WHEN, in the three registers. */
 const WHEN = ['कब', 'kab', 'when'];
+
+/**
+ * Parts of a day. "कल शाम" is tomorrow evening, not just tomorrow — and
+ * "what about the evening?" is a time, where the reader used to find a place
+ * called Evening. "rat" is left out of night: it is an English word first.
+ */
+const DAY_PARTS: [DayPart, string[]][] = [
+  ['morning', ['सुबह', 'सवेरे', 'सुबह-सुबह', 'subah', 'subha', 'suba', 'savere', 'sawere', 'morning', 'mornings']],
+  ['afternoon', ['दोपहर', 'dopahar', 'dopehar', 'dophar', 'afternoon', 'noon', 'midday']],
+  ['evening', ['शाम', 'सांझ', 'shaam', 'sham', 'saanjh', 'evening', 'evenings']],
+  ['night', ['रात', 'आज रात', 'raat', 'tonight', 'night', 'nights']],
+];
+
+/** Clock time: "5 baje", "at 6 pm". Read as nothing yet, but never a name. */
+const CLOCK = ['बजे', 'baje', 'am', 'pm', "o'clock", 'oclock'];
+
+/** Month names as words, for the mask; the date reader has its own patterns. */
+const MONTH_WORDS = [
+  'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june',
+  'jul', 'july', 'aug', 'august', 'sep', 'sept', 'september', 'oct', 'october', 'nov',
+  'november', 'dec', 'december', 'जनवरी', 'फ़रवरी', 'फरवरी', 'मार्च', 'अप्रैल', 'अप्रेल', 'मई',
+  'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'सितम्बर', 'अक्टूबर', 'अक्तूबर', 'नवंबर', 'नवम्बर',
+  'दिसंबर', 'दिसम्बर',
+];
+
+/** The part of the day the text names, or null. */
+export function readDayPart(text: string): DayPart | null {
+  for (const [part, words] of DAY_PARTS) if (hasAny(text, words)) return part;
+  return null;
+}
+
+/**
+ * A window narrowed to a part of the day. A part with no day of its own
+ * ("shaam ko?") is today's; windows that are not one day keep no part.
+ */
+export function withPart(window: TimeWindow, part: DayPart | null | undefined): TimeWindow {
+  if (!part) return window;
+  if (window.kind === 'day') return { ...window, part };
+  if (window.kind === 'now') return { kind: 'day', offset: 0, part };
+  return window;
+}
 
 /** "and before that?" */
 const BEFORE_THAT = [
@@ -295,6 +336,14 @@ export function addDays(date: string, days: number): string {
 export type TimeReading = {
   /** The window the words name, or null when they name none. */
   window: TimeWindow | null;
+  /** The part of the day named, whether or not a day was: "shaam ko". */
+  part: DayPart | null;
+  /**
+   * The window is a part of the day and nothing else — no day was named. A
+   * fresh question reads it as today's; a follow-up narrows the day already
+   * under discussion ("kal?" … "aur shaam ko?" is tomorrow evening).
+   */
+  partOnly: boolean;
   /** Grammatical or lexical past: हुई थी, was, yesterday. */
   past: boolean;
   /** "when did it last rain" — needs a rain word, which the caller checks. */
@@ -317,14 +366,22 @@ export function readTime(text: string, today: string): TimeReading {
   const asksWhen = hasAny(t, WHEN);
   const beforeThat = hasAny(t, BEFORE_THAT);
   const lastEvent = hasAny(t, LAST_EVENT) || (asksWhen && past);
+  const part = readDayPart(t);
 
-  const reading = (window: TimeWindow | null): TimeReading => ({
-    window,
-    past: past || (window !== null && isPastWindow(window, today)),
-    lastEvent,
-    beforeThat,
-    asksWhen,
-  });
+  // A day named with a part of it carries the part; a part named alone is
+  // today's ("aaj shaam", "shaam ko", "this evening").
+  const reading = (named: TimeWindow | null): TimeReading => {
+    const window = named ? withPart(named, part) : part ? { kind: 'day' as const, offset: 0, part } : null;
+    return {
+      window,
+      part,
+      partOnly: !named && part !== null,
+      past: past || (window !== null && isPastWindow(window, today)),
+      lastEvent,
+      beforeThat,
+      asksWhen,
+    };
+  };
 
   // Most specific first: a phrase containing a number beats a bare word.
   const hours = PAST_HOURS.exec(t);
@@ -427,3 +484,17 @@ function clampHours(n: number): number {
 export function todayInIndia(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
 }
+
+/**
+ * Every word and phrase this reader understands, for the place extractor's
+ * mask. A word that says WHEN is never WHERE: "before that" left standing was
+ * an unidentified word in a follow-up, and "evening" was read as a place.
+ * One list, derived from the reader's own, so the two cannot drift apart.
+ */
+export const TIME_WORDS: readonly string[] = [
+  ...PAST, ...FUTURE, ...NOW, ...TODAY, ...KAL, ...PARSON, ...TOMORROW, ...DAY_AFTER,
+  ...YESTERDAY, ...DAY_BEFORE_YESTERDAY, ...THIS_WEEK, ...LAST_WEEK, ...LAST_MONTH,
+  ...LAST_DAY, ...NIGHT_PAST, ...LAST_EVENT, ...WHEN, ...BEFORE_THAT, ...CLOCK, ...MONTH_WORDS,
+  ...DAY_PARTS.flatMap(([, words]) => words),
+  ...WEEKDAYS.flatMap(([names]) => names),
+];

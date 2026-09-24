@@ -15,8 +15,9 @@
  */
 
 import { GAZETTEER } from './gazetteer';
-import { findPlace, type PlaceEvidence } from './place-extract';
+import { findPlace, type PlaceClues, type PlaceEvidence } from './place-extract';
 import { LOCATION_FILLER, wantsCurrentLocation } from './location-intent';
+import { TIME_WORDS } from './time';
 import { isLexiconWord } from '../i18n/detect';
 import { matchPlace } from '../weather/gazetteer/match';
 import type {
@@ -152,15 +153,22 @@ function matches(text: string, word: string): boolean {
   return new RegExp(boundedPattern(word), 'iu').test(text);
 }
 
+/** Each word list's sorted, compiled mask, built once: the lists are long and fixed. */
+const compiled = new WeakMap<string[], RegExp[]>();
+
 /** Blanks every listed word out of the original string, preserving offsets. */
 function blank(text: string, words: string[]): string {
+  let patterns = compiled.get(words);
+  if (!patterns) {
+    // Longest first, so "इस हफ़्ते" is removed before "इस" could be.
+    patterns = [...new Set(words)]
+      .sort((a, b) => b.length - a.length)
+      .map((word) => new RegExp(boundedPattern(word), 'giu'));
+    compiled.set(words, patterns);
+  }
   let out = text;
-  // Longest first, so "इस हफ़्ते" is removed before "इस" could be.
-  for (const word of [...words].sort((a, b) => b.length - a.length)) {
-    out = out.replace(
-      new RegExp(boundedPattern(word), 'giu'),
-      (m) => ' '.repeat(m.length),
-    );
+  for (const pattern of patterns) {
+    out = out.replace(pattern, (m) => ' '.repeat(m.length));
   }
   return out;
 }
@@ -188,6 +196,9 @@ function blankContractions(text: string): string {
 
 const ALL_KEYWORDS = [
   ...TIME_KEYWORDS.flatMap((k) => k.words),
+  // Everything the time reader understands: a word that says WHEN is never
+  // WHERE ("what about the evening?" once asked for a place called Evening).
+  ...TIME_WORDS,
   ...VARIABLE_KEYWORDS.flatMap((k) => k.words),
   ...WARNING_KEYWORDS,
   ...STOPWORDS,
@@ -202,14 +213,70 @@ const ALL_KEYWORDS = [
   ...LOCATION_FILLER,
 ];
 
+/** Weather and time, word by word: what makes "X ka ___" about a place. */
+const WEATHER_OR_TIME = new Set(
+  [
+    ...TIME_KEYWORDS.flatMap((k) => k.words),
+    ...TIME_WORDS,
+    ...VARIABLE_KEYWORDS.flatMap((k) => k.words),
+    ...WARNING_KEYWORDS,
+  ]
+    .filter((w) => !/\s/.test(w))
+    .map((w) => w.toLocaleLowerCase()),
+);
+
+/** Strip what surrounds a word, keeping its letters and marks. */
+const letters = (word: string) => word.replace(/[^\p{L}\p{M}'’-]/gu, '');
+
+/**
+ * A name the gazetteer holds EXACTLY, that is not also ordinary speech.
+ *
+ * Exact, because a sentence is not a bare name: fuzzy repair is for a place
+ * the person typed on its own, where nothing else can be meant. Not ordinary
+ * speech, because "than" is an alias of Thane and "kitni" is one edit from
+ * Katni.
+ */
+export function isKnownPlace(name: string): boolean {
+  const cleaned = name.trim();
+  if (!cleaned || /\d/.test(cleaned)) return false;
+  if (cleaned.split(/\s+/).some((w) => isLexiconWord(letters(w)))) return false;
+  if (GAZETTEER.has(cleaned.toLowerCase())) return true;
+  return matchPlace(cleaned)?.how === 'exact';
+}
+
+const CLUES: PlaceClues = {
+  isKnown: isKnownPlace,
+  isWeatherOrTime: (word) => WEATHER_OR_TIME.has(letters(word).toLocaleLowerCase()),
+  isOrdinary: (word) => isLexiconWord(letters(word)),
+};
+
+/** The keyword mask: every keyword blanked, offsets kept. */
+function mask(text: string): string {
+  return blankContractions(blank(text, ALL_KEYWORDS));
+}
+
+/**
+ * True when the text has any word of the query vocabulary in it — a time, a
+ * weather word, a particle, a question word. A name offered on its own has
+ * none: "Rampur Khas" does; "दोस्त के साथ" and "the evening" do not.
+ */
+export function hasQueryWord(text: string): boolean {
+  return mask(text) !== text;
+}
+
+/** The evidence of a place in a sentence. See place-extract.ts. */
+export function placeEvidence(text: string): PlaceEvidence {
+  const masked = mask(text);
+  return findPlace(text, masked, masked !== text, CLUES);
+}
+
 /**
  * The place as a verbatim slice of the original text, or null when there is
  * no positive evidence of one. See place-extract.ts for why evidence rather
  * than elimination.
  */
 export function extractPlace(text: string): string | null {
-  const masked = blankContractions(blank(text, ALL_KEYWORDS));
-  const evidence = findPlace(text, masked, masked !== text, GAZETTEER);
+  const evidence = placeEvidence(text);
   if (evidence.kind !== 'found') return null;
   if (evidence.via === 'whole') return barePlace(text)?.place ?? null;
   return evidence.place;
@@ -303,8 +370,7 @@ export function readShape(text: string): QuestionShape {
   }
   const isWarning = WARNING_KEYWORDS.some((w) => matches(trimmed, w));
 
-  const masked = blankContractions(blank(trimmed, ALL_KEYWORDS));
-  let place = findPlace(trimmed, masked, masked !== trimmed, GAZETTEER);
+  let place = placeEvidence(trimmed);
 
   // A "whole message" claim is only a claim once the gazetteer agrees.
   if (place.kind === 'found' && place.via === 'whole') {
@@ -363,8 +429,7 @@ export const patternParser: Parser = {
     const isWarning = WARNING_KEYWORDS.some((w) => matches(trimmed, w));
     const recognisedShape = isWarning || timeWindow !== null || variable !== null;
 
-    const masked = blankContractions(blank(trimmed, ALL_KEYWORDS));
-    const evidence = findPlace(trimmed, masked, masked !== trimmed, GAZETTEER);
+    const evidence = placeEvidence(trimmed);
 
     /*
      * "Where I am" beats both the leftovers and the conversation.

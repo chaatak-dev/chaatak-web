@@ -203,7 +203,8 @@ export function describeAsked(window: TimeWindow, today: string): string {
       return 'right now';
     case 'day': {
       const date = addDays(today, window.offset);
-      return `${relativeLabel(date, today)} (${shortDate(date)})`;
+      const day = `${relativeLabel(date, today)} (${shortDate(date)})`;
+      return window.part ? `${day}, ${window.part}` : day;
     }
     case 'range':
       return `the next ${window.days} days`;

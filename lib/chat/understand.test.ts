@@ -225,9 +225,15 @@ test('a new place keeps the question; a new question does not inherit the day', 
   assert.deepEqual(fresh.window, { kind: 'now' }, 'a whole question starts fresh');
 });
 
-test('an offered name the gazetteer does not hold is still offered', () => {
-  const plan = weather('what about Rampur Khas?', standing());
-  assert.deepEqual(plan.place, { kind: 'named', text: 'Rampur Khas' });
+test('an offered name the gazetteer does not hold is left to the classifier, not guessed', () => {
+  // "what about X?" offers X — but X may be a village or may be cricket, and
+  // nothing here can tell which. It used to be named, and geocoded, either
+  // way. The classifier reads the conversation and decides; with no model,
+  // the reply asks.
+  assert.equal(read('what about Rampur Khas?', standing()), null);
+  assert.equal(read('what about cricket?', standing()), null);
+  // A known name offered the same way is still a place, locally.
+  assert.deepEqual(weather('what about Noida?', standing()).place, { kind: 'named', text: 'Noida' });
 });
 
 test('"what about that?" names nothing and is not a place', () => {

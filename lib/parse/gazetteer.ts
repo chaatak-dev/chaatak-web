@@ -19,10 +19,11 @@
  *     fabricated place it recognises. Partial coverage is a floor, not a
  *     proof, and the gate says so.
  *
- * What it is NOT used for:
- *   - extracting a place from a sentence. The pattern layer does that by
- *     position — whatever is left once the keywords are removed — so an
- *     unlisted village parses exactly as well as Mumbai does.
+ *   - one half of the pattern layer's "known place" check (the district
+ *     register behind `matchPlace` is the other). A place is claimed from a
+ *     sentence only when it is known; an unlisted village is left to the
+ *     classifier or asked for — see lib/parse/place-extract.ts for why
+ *     position alone is not evidence.
  */
 
 const STATES = [

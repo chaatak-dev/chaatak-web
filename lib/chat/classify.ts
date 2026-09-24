@@ -21,6 +21,8 @@ import { cached, TTL } from '../cache';
 import { completeWithFallback } from '../llm/chain';
 import { providers } from '../llm/index';
 import type { JsonSchema } from '../llm/types';
+import { hasQueryWord } from '../parse/patterns';
+import { readTime, withPart } from '../parse/time';
 import type { TimeWindow, Variable } from '../parse/types';
 import { SCOPE_RULES } from './scope';
 import type { SocialKind } from './social';
@@ -63,9 +65,13 @@ const SYSTEM = [
   '  "social" for greetings, thanks, reactions ("oh really", "wow"), "ok" and',
   '  small talk; "about" for explanations of weather terms or questions about',
   '  Chaatak; "outOfScope" only for clearly unrelated requests.',
-  '- `place`: copy it EXACTLY as written in the NEW message — same script,',
-  '  spelling and case. Never transliterate, correct or translate it. Empty',
-  '  if the new message names no place. Never copy a place from the context.',
+  '- `place`: a geographic place name only — a village, town, city, district',
+  '  or state. Copy it EXACTLY as written in the NEW message — same script,',
+  '  spelling and case. Never transliterate, correct or translate it. People,',
+  '  activities, events and ordinary spots are NOT places: a friend (दोस्त),',
+  '  cricket, a wedding, home (घर), office, school, the field (खेत). For those,',
+  '  and whenever the new message names no place, leave it empty: the',
+  '  place of the conversation is used. Never copy a place from the context.',
   '- `placeIsHere`: true if the person means where they are ("near me").',
   '- `usesContext`: true if the message continues the previous question',
   '  ("and tomorrow?", "what about wind?", "and before that?").',
@@ -126,8 +132,10 @@ function describeWindow(window: TimeWindow): string {
   switch (window.kind) {
     case 'now':
       return 'now';
-    case 'day':
-      return window.offset === 0 ? 'today' : `${window.offset > 0 ? '+' : ''}${window.offset} days`;
+    case 'day': {
+      const day = window.offset === 0 ? 'today' : `${window.offset > 0 ? '+' : ''}${window.offset} days`;
+      return window.part ? `${day}, ${window.part}` : day;
+    }
     case 'range':
       return `next ${window.days} days`;
     case 'past':
@@ -154,6 +162,17 @@ export function verbatimPlace(message: string, place: string): string | null {
   return message.slice(at, at + wanted.length);
 }
 
+/**
+ * A place from the model, held to what a place can be. Verbatim is checked
+ * first; then a "place" made only of the query vocabulary — "kal", "shaam",
+ * "barish", "mein" — is no place at all, whatever the model thought.
+ */
+export function plausiblePlace(place: string | null): string | null {
+  if (!place) return null;
+  const words = place.trim().split(/\s+/);
+  return words.some((word) => /\p{L}/u.test(word) && !hasQueryWord(word)) ? place : null;
+}
+
 /** The model's reading, as a plan, with every field checked. */
 export function toPlan(raw: Raw, message: string, ctx: TurnContext): Plan {
   switch (raw.act) {
@@ -167,7 +186,7 @@ export function toPlan(raw: Raw, message: string, ctx: TurnContext): Plan {
       return { act: 'outOfScope' };
   }
 
-  const named = verbatimPlace(message, raw.place ?? '');
+  const named = plausiblePlace(verbatimPlace(message, raw.place ?? ''));
   const standing = ctx.standing;
   const hasPlace = Boolean(standing?.place);
 
@@ -187,10 +206,15 @@ export function toPlan(raw: Raw, message: string, ctx: TurnContext): Plan {
   if (!window && /^\d{4}-\d{2}-\d{2}$/.test(raw.date ?? '')) window = { kind: 'date', date: raw.date };
   if (!window && dayOffset !== 0) window = { kind: 'day', offset: Math.max(-3650, Math.min(15, dayOffset)) };
   if (!window && raw.topic === 'history') window = { kind: 'day', offset: -1 };
+  // A day named by the model is one the words named too; a part of the day
+  // is read from the words themselves, the same way the local reader does.
+  const time = readTime(message, ctx.today);
+  if (window?.kind === 'day' && time.part) window = withPart(window, time.part);
 
   const inherit = raw.usesContext && standing;
   const fromWindow = standing?.pending?.timeWindow ?? standing?.timeWindow;
-  const finalWindow: TimeWindow = window ?? (inherit && fromWindow ? fromWindow : { kind: 'now' });
+  let finalWindow: TimeWindow = window ?? (inherit && fromWindow ? fromWindow : { kind: 'now' });
+  if (!window && time.part) finalWindow = withPart(finalWindow, time.part);
 
   const fromVariable = standing?.pending?.variable ?? standing?.variable;
   const variable: Variable = raw.variable || (inherit && fromVariable ? fromVariable : 'all');

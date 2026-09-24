@@ -251,7 +251,9 @@ function readWindow(raw: unknown): TimeWindow | null {
       return { kind: 'now' };
     case 'day': {
       const offset = int(w.offset, -3650, 16);
-      return offset === null ? null : { kind: 'day', offset };
+      if (offset === null) return null;
+      const part = w.part === 'morning' || w.part === 'afternoon' || w.part === 'evening' || w.part === 'night' ? w.part : null;
+      return part ? { kind: 'day', offset, part } : { kind: 'day', offset };
     }
     case 'range': {
       const days = int(w.days, 1, 16);
@@ -299,8 +301,9 @@ export async function answerQuestion(input: AnswerInput, overrides: Partial<Answ
     const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant')?.text;
     const classified = await deps.classify(question, ctx, { lastUser, lastAssistant });
     parseLayer = classified?.cacheHit ? 'cache' : 'llm';
-    // Every provider out: ask what was meant. Never a geocode.
-    plan = classified?.plan ?? fallbackPlan(question);
+    // Every provider out: what the words plainly say, on the conversation's
+    // place — or ask what was meant. Never a geocode.
+    plan = classified?.plan ?? fallbackPlan(question, ctx);
   }
 
   /* ---- decide the language, before anything is written ------------ */
@@ -729,6 +732,11 @@ function turnNotes(
   }
   if (plan.turn === 'place') notes.push(`The person gave the place ${place} for the question being discussed.`);
   if (fromDevice) notes.push(`The place was taken from the device's location: say it is for ${place}.`);
+  if (plan.window.kind === 'day' && plan.window.part) {
+    notes.push(
+      `They asked about the ${plan.window.part} of that day. The forecast is for the whole day, not by the hour: reason from the day's figures, say they are for the day, and never state a value as the ${plan.window.part}'s own.`,
+    );
+  }
   if (plan.window.kind === 'lastEvent' && plan.window.before) {
     notes.push('They asked about the rain BEFORE the one already mentioned; DATA.history holds that earlier one.');
   }

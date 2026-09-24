@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import { LOCATION_FILLER, wantsCurrentLocation } from './location-intent';
-import { extractPlace, patternParser } from './patterns';
+import { extractPlace, patternParser, placeEvidence } from './patterns';
 
 const EN = { lang: 'en' as const };
 
@@ -129,10 +129,13 @@ test('typo repair and the admin-hierarchy fix are untouched', async () => {
   assert.equal(await mode('बाराबंकी'), 'named:बाराबंकी');
   assert.equal(await mode('Ghaziabad mein mausam'), 'named:Ghaziabad');
 
-  // A misspelling still reaches the extractor as the verbatim substring; the
-  // gazetteer repairs it downstream.
-  assert.equal(extractPlace('Kolkatta mein mausam'), 'Kolkatta');
-  assert.equal(extractPlace('Jaypur ka mausam'), 'Jaypur');
+  // A misspelling inside a sentence is not repaired HERE: fuzzy repair in a
+  // sentence is how "mandir" (a temple) would become Mandi district. It is
+  // passed on verbatim, to the classifier and then the resolver, which does
+  // repair it.
+  assert.deepEqual(placeEvidence('Kolkatta mein mausam'), { kind: 'unsure', candidate: 'Kolkatta' });
+  assert.deepEqual(placeEvidence('Jaypur ka mausam'), { kind: 'unsure', candidate: 'Jaypur' });
+  assert.deepEqual(placeEvidence('mandir mein barish hogi'), { kind: 'unsure', candidate: 'mandir' });
 });
 
 test('no filler entry collides with a real place name', () => {

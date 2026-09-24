@@ -28,14 +28,23 @@ export type Intent =
    */
   | 'history';
 
+/**
+ * A part of a day: "कल शाम", "tomorrow evening", "aaj raat".
+ *
+ * Carried so the answer knows WHEN in the day was asked about. The forecast
+ * behind it is daily, so it narrows the question, never the numbers: an
+ * answer about tomorrow evening reasons from tomorrow's figures and says so.
+ */
+export type DayPart = 'morning' | 'afternoon' | 'evening' | 'night';
+
 export type TimeWindow =
   | { kind: 'now' }
   /**
    * Whole days from today, in the place's own zone. 0 = आज, 1 = कल
    * (tomorrow), 2 = परसों — and, for a past-tense question, -1 = कल
-   * (yesterday), -2 = the day before.
+   * (yesterday), -2 = the day before. `part` narrows it to a part of that day.
    */
-  | { kind: 'day'; offset: number }
+  | { kind: 'day'; offset: number; part?: DayPart }
   /** A span starting today, e.g. इस हफ़्ते. */
   | { kind: 'range'; days: number }
   /** The N complete days before today: "last week", "pichhle 7 din". */
