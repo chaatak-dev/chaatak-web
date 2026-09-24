@@ -21,6 +21,8 @@
  * shows made-up weather is worse than a map that shows none.
  */
 
+import { CPCB_BANDS } from '../weather/aqi-bands';
+
 export type BaseMapProvider = {
   id: string;
   /** A MapLibre style URL. The only thing that has to change to swap maps. */
@@ -68,11 +70,12 @@ export type LayerId =
 /**
  * How a layer gets its numbers.
  *
- *   points   sampled on a grid across the viewport, from a forecast API
- *   regions  one value per administrative area we already hold geometry for
- *   none     no source is configured; the layer says so
+ *   points    sampled on a grid across the viewport, from a forecast API
+ *   stations  one value per monitoring station, drawn where the station is
+ *   regions   one value per administrative area we already hold geometry for
+ *   none      no source is configured; the layer says so
  */
-export type LayerKind = 'points' | 'regions' | 'none';
+export type LayerKind = 'points' | 'stations' | 'regions' | 'none';
 
 export type LayerAvailability =
   | { status: 'available' }
@@ -92,6 +95,15 @@ export type WeatherLayer = {
    * 35°C has to mean 35°C on the legend and in the shader alike.
    */
   stops: [number, string][];
+  /**
+   * Colour by band instead of blending between stops.
+   *
+   * For an index with named bands, where 201 is "poor" and not a shade of
+   * "moderate". Each stop is then a band's inclusive upper bound.
+   */
+  stepped?: boolean;
+  /** Where the legend starts, when that is not the first stop. */
+  min?: number;
   availability: LayerAvailability;
 };
 
@@ -159,19 +171,15 @@ export const LAYERS: Record<LayerId, WeatherLayer> = {
     ],
     availability: { status: 'available' },
   },
+  /*
+   * CPCB's stations, on CPCB's bands. The scale actually in use comes from
+   * the server with the data — see AQI_SCALES — because where CPCB cannot be
+   * read the layer is the modelled European grid instead, and the two must
+   * never share a legend.
+   */
   aqi: {
     id: 'aqi',
-    kind: 'points',
-    field: 'european_aqi',
-    unit: 'EAQI',
-    stops: [
-      [0, '#6BA84F'],
-      [20, '#A9C64E'],
-      [40, '#E3C463'],
-      [60, '#E08A3C'],
-      [80, '#A32D2D'],
-      [100, '#6B2233'],
-    ],
+    ...cpcbScale(),
     availability: { status: 'available' },
   },
   uv: {
@@ -227,6 +235,54 @@ export const LAYERS: Record<LayerId, WeatherLayer> = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* Air quality scales                                                  */
+/* ------------------------------------------------------------------ */
+
+export type AqiScale = 'cpcb' | 'european';
+
+type Scale = Pick<WeatherLayer, 'kind' | 'field' | 'unit' | 'stops' | 'stepped' | 'min'>;
+
+/** Good through severe: CPCB's six bands, in the ramp's six colours. */
+function cpcbScale(): Scale {
+  const colours = ['#6BA84F', '#A9C64E', '#E3C463', '#E08A3C', '#A32D2D', '#6B2233'];
+  return {
+    kind: 'stations',
+    unit: 'AQI',
+    // Built from the same table the rail's band comes from, so a dot and the
+    // rail can never put one number in two bands.
+    stops: CPCB_BANDS.map(([upper], i) => [upper, colours[i]] as [number, string]),
+    stepped: true,
+    min: 0,
+  };
+}
+
+/**
+ * The two scales the AQI layer can be on. Never mixed: the server says which
+ * one a response is on, and the whole layer follows it.
+ */
+export const AQI_SCALES: Record<AqiScale, Scale> = {
+  cpcb: cpcbScale(),
+  european: {
+    kind: 'points',
+    field: 'european_aqi',
+    unit: 'EAQI',
+    stops: [
+      [0, '#6BA84F'],
+      [20, '#A9C64E'],
+      [40, '#E3C463'],
+      [60, '#E08A3C'],
+      [80, '#A32D2D'],
+      [100, '#6B2233'],
+    ],
+  },
+};
+
+/** The AQI layer on a given scale. */
+export function aqiLayer(scale: AqiScale): WeatherLayer {
+  return { ...LAYERS.aqi, stepped: undefined, min: undefined, field: undefined, ...AQI_SCALES[scale] };
+}
+
 export const LAYER_ORDER: LayerId[] = [
   'temperature',
   'precipitation',
@@ -247,6 +303,14 @@ export const LAYER_ORDER: LayerId[] = [
 export function colourFor(layer: WeatherLayer, value: number): string {
   const stops = layer.stops;
   if (stops.length === 0) return '#888';
+
+  if (layer.stepped) {
+    for (const [upper, colour] of stops) {
+      if (value <= upper) return colour;
+    }
+    return stops[stops.length - 1][1];
+  }
+
   if (value <= stops[0][0]) return stops[0][1];
   if (value >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
 

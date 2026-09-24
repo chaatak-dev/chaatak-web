@@ -13,8 +13,17 @@
  * reachable from the browser.
  */
 
-import { LAYERS, latticePoints, snapToLattice, type LayerId } from '@/lib/map/layers';
+import {
+  LAYERS,
+  aqiLayer,
+  latticePoints,
+  snapToLattice,
+  type LayerId,
+  type WeatherLayer,
+} from '@/lib/map/layers';
 import { TTL, cached } from '@/lib/cache';
+import { airQualitySource } from '@/lib/weather/aqi';
+import { CPCB_SOURCE, cpcbFeed, stationsInBounds } from '@/lib/weather/cpcb';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,15 +52,20 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   const id = url.searchParams.get('layer') as LayerId | null;
-  const layer = id ? LAYERS[id] : undefined;
+  let layer: WeatherLayer | undefined = id ? LAYERS[id] : undefined;
 
   if (!layer) {
     return Response.json({ error: 'Unknown layer.' }, { status: 400 });
   }
 
   // A layer with no source says so rather than returning an empty grid that
-  // would render as "no weather anywhere".
-  if (layer.availability.status === 'unavailable' || layer.kind !== 'points') {
+  // would render as "no weather anywhere". Air quality is decided below: its
+  // kind depends on which source can answer.
+  if (
+    layer.availability.status === 'unavailable' ||
+    layer.kind === 'regions' ||
+    layer.kind === 'none'
+  ) {
     return Response.json(
       { layer: layer.id, kind: layer.kind, availability: layer.availability, points: [] },
       { headers: { 'cache-control': 'no-store' } },
@@ -65,6 +79,57 @@ export async function GET(request: Request): Promise<Response> {
 
   if (west === null || south === null || east === null || north === null) {
     return Response.json({ error: 'Send west, south, east and north.' }, { status: 400 });
+  }
+
+  /*
+   * Air quality follows the rail's source, so the map and the rail cannot put
+   * one place on two scales.
+   *
+   * CPCB: the stations themselves, from the same cached feed the rail reads —
+   * no request of its own, and no field painted between stations, because the
+   * air between two monitors was not measured. Where the feed cannot be read
+   * and the source has a modelled fallback, the whole layer becomes the
+   * European grid and says so; the two scales never share one map.
+   */
+  let scale: 'cpcb' | 'european' | undefined;
+  if (layer.id === 'aqi') {
+    const air = airQualitySource();
+    if (air.standard === 'cpcb') {
+      const feed = await cpcbFeed();
+      if (feed.ok) {
+        const cpcb = aqiLayer('cpcb');
+        return Response.json(
+          {
+            layer: cpcb.id,
+            scale: 'cpcb',
+            kind: cpcb.kind,
+            unit: cpcb.unit,
+            availability: cpcb.availability,
+            points: stationsInBounds(feed.stations, { west, south, east, north }),
+            source: CPCB_SOURCE,
+            nature: 'observation',
+            fetchedAt: new Date().toISOString(),
+          },
+          { headers: { 'cache-control': 'no-store' } },
+        );
+      }
+      if (!air.fallback) {
+        return Response.json(
+          {
+            layer: layer.id,
+            scale: 'cpcb',
+            kind: 'stations',
+            unit: layer.unit,
+            availability: layer.availability,
+            points: [],
+            error: { kind: 'unreachable', upstreamStatus: null },
+          },
+          { status: 503, headers: { 'cache-control': 'no-store' } },
+        );
+      }
+    }
+    layer = aqiLayer('european');
+    scale = 'european';
   }
 
   /*
@@ -82,12 +147,13 @@ export async function GET(request: Request): Promise<Response> {
 
   const latitudes = grid.map((p) => p.lat.toFixed(3)).join(',');
   const longitudes = grid.map((p) => p.lon.toFixed(3)).join(',');
-  const isAir = layer.id === 'aqi';
+  const drawn = layer;
+  const isAir = drawn.id === 'aqi';
   const host = isAir ? AIR_HOST : HOST;
 
   const upstream =
     `${host}?latitude=${latitudes}&longitude=${longitudes}` +
-    `&current=${layer.field}&timezone=auto`;
+    `&current=${drawn.field}&timezone=auto`;
 
   /*
    * Keyed on the snapped tile and the layer, so panning a few pixels does not
@@ -95,7 +161,7 @@ export async function GET(request: Request): Promise<Response> {
    * cadence — these are the same model values.
    */
   const key =
-    `map:${layer.id}:${lattice.step}:` +
+    `map:${drawn.id}:${scale ?? ''}:${lattice.step}:` +
     `${lattice.west},${lattice.south},${lattice.east},${lattice.north}`;
 
   const result = await cached<MapResult>(
@@ -117,7 +183,7 @@ export async function GET(request: Request): Promise<Response> {
            * host answers a single coordinate on the next route.
            */
           console.warn(
-            `[map] ${layer.id}: upstream ${res.status} for ${grid.length} points ` +
+            `[map] ${drawn.id}: upstream ${res.status} for ${grid.length} points ` +
               `(${upstream.length} char url)`,
           );
           return { ok: false, upstreamStatus: res.status };
@@ -131,7 +197,7 @@ export async function GET(request: Request): Promise<Response> {
         const points = rows
           .map((row, i) => {
             const current = (row as { current?: Record<string, unknown> }).current;
-            const value = current?.[layer.field as string];
+            const value = current?.[drawn.field as string];
             if (typeof value !== 'number' || !Number.isFinite(value)) return null;
             return { lat: grid[i]?.lat, lon: grid[i]?.lon, value };
           })
@@ -143,7 +209,7 @@ export async function GET(request: Request): Promise<Response> {
         return { ok: true, points };
       } catch (error) {
         console.warn(
-          `[map] ${layer.id}: upstream unreachable for ${grid.length} points —`,
+          `[map] ${drawn.id}: upstream unreachable for ${grid.length} points —`,
           error instanceof Error ? error.name : error,
         );
         return { ok: false, upstreamStatus: null };
@@ -167,9 +233,11 @@ export async function GET(request: Request): Promise<Response> {
      */
     return Response.json(
       {
-        layer: layer.id,
-        unit: layer.unit,
-        availability: layer.availability,
+        layer: drawn.id,
+        scale,
+        kind: drawn.kind,
+        unit: drawn.unit,
+        availability: drawn.availability,
         points: [],
         error: { kind: 'unreachable', upstreamStatus: result.upstreamStatus },
       },
@@ -181,9 +249,11 @@ export async function GET(request: Request): Promise<Response> {
 
   return Response.json(
     {
-      layer: layer.id,
-      unit: layer.unit,
-      availability: layer.availability,
+      layer: drawn.id,
+      scale,
+      kind: drawn.kind,
+      unit: drawn.unit,
+      availability: drawn.availability,
       points,
       // A model value, like everything else Open-Meteo returns.
       nature: 'model',

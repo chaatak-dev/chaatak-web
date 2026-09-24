@@ -165,6 +165,48 @@ export const STRINGS = {
     hi: 'हवा की गुणवत्ता उपलब्ध नहीं है।',
     en: 'Air quality is not available.',
   },
+  /* A CPCB reading: whose index it is, and which station measured it. */
+  'rail.aqiCpcb': {
+    hi: 'CPCB · भारतीय AQI (राष्ट्रीय वायु गुणवत्ता सूचकांक)',
+    en: 'CPCB · Indian AQI (National Air Quality Index)',
+  },
+  'rail.aqiStation': {
+    hi: '{station} पर मापा गया · {km} किमी दूर',
+    en: 'Measured at {station} · {km} km away',
+  },
+  /* CPCB publishes each pollutant's sub-index, not its concentration. */
+  'rail.aqiSubIndex': { hi: 'प्रदूषकों के उप-सूचकांक', en: 'Sub-index by pollutant' },
+  /* Why the modelled figure is showing instead of CPCB's. */
+  'rail.aqiFallbackNoStation': {
+    hi: '{km} किमी के भीतर CPCB का कोई स्टेशन नहीं है, इसलिए यह मॉडल का आँकड़ा है।',
+    en: 'No CPCB station within {km} km, so this is the modelled figure.',
+  },
+  'rail.aqiFallbackNoCurrentData': {
+    hi: 'पास के CPCB स्टेशनों का कोई ताज़ा, पूरा आँकड़ा नहीं है, इसलिए यह मॉडल का आँकड़ा है।',
+    en: 'No nearby CPCB station has a current, complete reading, so this is the modelled figure.',
+  },
+  'rail.aqiFallbackUnavailable': {
+    hi: 'CPCB का आँकड़ा अभी नहीं मिल सका, इसलिए यह मॉडल का आँकड़ा है।',
+    en: 'CPCB could not be reached just now, so this is the modelled figure.',
+  },
+
+  /*
+   * Each index's bands in its own words. CPCB's second band is
+   * "satisfactory" and the European index's is "fair"; the top of the
+   * European scale is "extremely poor", not CPCB's "severe".
+   */
+  'aqi.cpcb.good': { hi: 'अच्छा', en: 'Good' },
+  'aqi.cpcb.satisfactory': { hi: 'संतोषजनक', en: 'Satisfactory' },
+  'aqi.cpcb.moderate': { hi: 'मध्यम', en: 'Moderate' },
+  'aqi.cpcb.poor': { hi: 'खराब', en: 'Poor' },
+  'aqi.cpcb.veryPoor': { hi: 'बहुत खराब', en: 'Very poor' },
+  'aqi.cpcb.severe': { hi: 'गंभीर', en: 'Severe' },
+  'aqi.european.good': { hi: 'अच्छा', en: 'Good' },
+  'aqi.european.fair': { hi: 'ठीक', en: 'Fair' },
+  'aqi.european.moderate': { hi: 'मध्यम', en: 'Moderate' },
+  'aqi.european.poor': { hi: 'खराब', en: 'Poor' },
+  'aqi.european.veryPoor': { hi: 'बहुत खराब', en: 'Very poor' },
+  'aqi.european.severe': { hi: 'अत्यंत खराब', en: 'Extremely poor' },
   'rail.openMap': { hi: 'मौसम का नक्शा', en: 'Weather map' },
   'rail.metric': { hi: 'क्या दिखाएँ', en: 'Show' },
   'rail.noWarning': { hi: 'IMD की कोई चेतावनी लागू नहीं', en: 'No IMD warning in force' },
@@ -193,6 +235,18 @@ export const STRINGS = {
   'map.summary': {
     hi: '{layer}: दिख रहे हिस्से में {min} से {max} {unit} ({count} जगहों के आँकड़े)।',
     en: '{layer} in view: {min} to {max} {unit}, from {count} points.',
+  },
+  'map.summaryStations': {
+    hi: '{layer}: दिख रहे हिस्से में {min} से {max} {unit} ({count} CPCB स्टेशन)।',
+    en: '{layer} in view: {min} to {max} {unit}, from {count} CPCB stations.',
+  },
+  'map.noStations': {
+    hi: 'दिख रहे हिस्से में CPCB का कोई ऐसा स्टेशन नहीं जिसका ताज़ा आँकड़ा हो।',
+    en: 'No CPCB station with a current reading in view.',
+  },
+  'map.aqiCpcb': {
+    hi: 'CPCB · भारतीय AQI · हर बिंदु एक निगरानी स्टेशन है',
+    en: 'CPCB · Indian AQI · each dot is a monitoring station',
   },
   'map.readCentre': { hi: 'बीच की जगह का मान पढ़ें', en: 'Read the value at the centre' },
   'map.keyboardHint': {
@@ -329,8 +383,8 @@ export const STRINGS = {
   },
   'faq.q.aqi': { hi: 'क्या हवा की गुणवत्ता भारत का आधिकारिक AQI है?', en: 'Is the air quality India’s official AQI?' },
   'faq.a.aqi': {
-    hi: 'नहीं। दिखाई गई हवा की गुणवत्ता यूरोपीय पैमाने पर मॉडल से निकला मान है। भारत का आधिकारिक सूचकांक CPCB का है, जो स्टेशनों पर अलग पैमाने से मापा जाता है — दोनों की तुलना नहीं की जा सकती। स्क्रीन पर लिखा होता है कि यह कौन-सा है।',
-    en: 'No. The air quality shown is a modelled value on the European scale. India’s official index is CPCB’s, measured at stations on different breakpoints, and the two cannot be compared. The screen says which one it is.',
+    hi: 'जहाँ 25 किमी के भीतर CPCB के किसी निगरानी स्टेशन का ताज़ा आँकड़ा है, वहाँ हाँ: यह उसी स्टेशन पर मापा गया CPCB का राष्ट्रीय AQI है, और स्क्रीन पर स्टेशन का नाम और दूरी लिखी होती है। जहाँ ऐसा स्टेशन नहीं है, वहाँ चातक यूरोपीय पैमाने पर मॉडल से निकला मान दिखाता है और यह साफ़ बताता है — दोनों पैमाने अलग हैं और उनकी तुलना नहीं की जा सकती।',
+    en: 'Where a CPCB monitoring station within 25 km has a current reading, yes: it is CPCB’s National AQI, measured at that station, and the screen names the station and its distance. Where there is none, Chaatak shows a modelled value on the European scale instead and says so — the two scales use different breakpoints and cannot be compared.',
   },
 
   'faq.q.colours': { hi: 'चेतावनी के रंगों का क्या मतलब है?', en: 'What do the warning colours mean?' },

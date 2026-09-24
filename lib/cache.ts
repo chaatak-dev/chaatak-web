@@ -49,7 +49,18 @@ export const TTL = {
    * rather than forever.
    */
   archive: 24 * 60 * 60 * 1000,
+  /**
+   * CPCB's station network. The feed is published hourly, so a quarter of an
+   * hour keeps a new hour from waiting long while one request serves every
+   * place and the map alike.
+   */
+  airStations: 15 * 60 * 1000,
 } as const;
+
+/** Drop one entry, so the next read goes upstream. */
+export function forget(key: string): void {
+  store.delete(key);
+}
 
 /**
  * @param shouldCache decides whether a given result is worth keeping. Used to

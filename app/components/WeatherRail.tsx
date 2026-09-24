@@ -23,7 +23,7 @@ import { useApp } from './AppState';
 import { WeatherCard } from './WeatherCard';
 import { MapEntry } from './MapEntry';
 import { Provenance } from './Provenance';
-import { freshness } from '@/lib/weather/freshness';
+import { freshness, isCurrent } from '@/lib/weather/freshness';
 import { ageLabel } from '@/lib/offline/cache';
 import { currentPosition, geoSupported } from '@/lib/geo';
 import { fetchAirQuality, type AirQualityState } from '@/lib/weather/context';
@@ -33,6 +33,9 @@ import { warningsInForce } from '@/lib/weather/snapshot';
 import { severityAction, severityWords } from '@/lib/alerts/templates';
 import { formatIstWindow } from '@/lib/format';
 import type { WeatherSnapshot } from '@/lib/weather/api';
+import type { AqiBand, AqiStandard } from '@/lib/weather/aqi';
+import type { CpcbMiss } from '@/lib/weather/cpcb';
+import type { StringKey } from '@/lib/i18n/strings';
 import type { Measurement } from '@/lib/weather/types';
 
 /**
@@ -256,7 +259,9 @@ export function WeatherRail() {
         ))}
       </div>
 
-      {metric === 'aqi' && <AirQualityPanel state={air} />}
+      {metric === 'aqi' && (
+        <AirQualityPanel state={air} timeZone={place?.timezone ?? 'Asia/Kolkata'} />
+      )}
 
       <MapEntry />
     </div>
@@ -316,14 +321,42 @@ function RailWarnings({ snapshot }: { snapshot: WeatherSnapshot }) {
   return <p className="rail__note">{t('rail.warningsUnavailable')}</p>;
 }
 
+/** Each index's bands in its own words — never one scale's names on another's number. */
+const AQI_BAND_KEY: Partial<Record<AqiStandard, Partial<Record<AqiBand, StringKey>>>> = {
+  cpcb: {
+    good: 'aqi.cpcb.good',
+    satisfactory: 'aqi.cpcb.satisfactory',
+    moderate: 'aqi.cpcb.moderate',
+    poor: 'aqi.cpcb.poor',
+    veryPoor: 'aqi.cpcb.veryPoor',
+    severe: 'aqi.cpcb.severe',
+  },
+  european: {
+    good: 'aqi.european.good',
+    fair: 'aqi.european.fair',
+    moderate: 'aqi.european.moderate',
+    poor: 'aqi.european.poor',
+    veryPoor: 'aqi.european.veryPoor',
+    severe: 'aqi.european.severe',
+  },
+};
+
+const FALLBACK_KEY: Record<CpcbMiss, StringKey> = {
+  noStation: 'rail.aqiFallbackNoStation',
+  noCurrentData: 'rail.aqiFallbackNoCurrentData',
+  unavailable: 'rail.aqiFallbackUnavailable',
+};
+
 /**
  * Air quality, stated as exactly what it is.
  *
- * The index and the fact that it is modelled are not fine print. India's
- * official index is CPCB's, on different breakpoints, and a reader who knows
- * that scale would silently misread this number without the label.
+ * Which index, measured or modelled, and — for a CPCB reading — which station
+ * and how far away. None of it is fine print: India's official index is
+ * CPCB's, on different breakpoints, and a reader who knows that scale would
+ * silently misread a European number without the label. Where the modelled
+ * figure is standing in for CPCB, the reader is told why.
  */
-function AirQualityPanel({ state }: { state: AirQualityState }) {
+function AirQualityPanel({ state, timeZone }: { state: AirQualityState; timeZone: string }) {
   const { t } = useApp();
 
   if (state.status === 'loading') return <p className="rail__note">{t('rail.loading')}</p>;
@@ -332,22 +365,49 @@ function AirQualityPanel({ state }: { state: AirQualityState }) {
   }
 
   const { air } = state;
+  const band = AQI_BAND_KEY[air.standard]?.[air.band];
+  const { provenance } = air;
 
   return (
     <div className="rail__aqi">
       <p className={`rail__aqi-value rail__aqi-value--${air.band}`}>
         {air.value}
-        <span className="rail__aqi-band">{air.band}</span>
+        {band && <span className="rail__aqi-band">{t(band)}</span>}
       </p>
-      <ul className="rail__aqi-parts">
-        {air.components.map((c) => (
-          <li key={c.key}>
-            <span>{c.key.replace('_', '.').toUpperCase()}</span> {c.value}
-            <span className="rail__unit">{c.unit}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="rail__aqi-note">{t('rail.aqiModelled')}</p>
+      {air.station && (
+        <p className="rail__aqi-station">
+          {t('rail.aqiStation', { station: air.station.name, km: air.station.distanceKm })}
+        </p>
+      )}
+      {air.components.length > 0 && (
+        <>
+          {air.measure === 'subIndex' && (
+            <p className="rail__aqi-parts-label">{t('rail.aqiSubIndex')}</p>
+          )}
+          <ul className="rail__aqi-parts">
+            {air.components.map((c) => (
+              <li key={c.key}>
+                <span>{c.key.replace('_', '.').toUpperCase()}</span> {c.value}
+                {c.unit && <span className="rail__unit">{c.unit}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="rail__aqi-note">
+        {air.standard === 'cpcb' ? t('rail.aqiCpcb') : t('rail.aqiModelled')}
+        {air.fallback && (
+          <> {t(FALLBACK_KEY[air.fallback.miss], { km: air.fallback.withinKm })}</>
+        )}
+      </p>
+      <Provenance
+        source={provenance.source}
+        nature={provenance.nature}
+        timestamp={provenance.observedAt ?? provenance.issuedAt}
+        basis={provenance.timeBasis}
+        timeZone={timeZone}
+        severity={isCurrent(provenance) ? 'none' : 'stale'}
+      />
     </div>
   );
 }

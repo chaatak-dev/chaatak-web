@@ -245,13 +245,18 @@ somebody on the wrong side of it that they are safe. The base-map provider is
 abstracted from the weather layers and carries its attribution; sampling is
 capped per viewport rather than scaled with it.
 
-**Air quality is named for the scale it is on.** What is available today is
-modelled (Open-Meteo/CAMS) on the **European** breakpoints, and it is labelled
-modelled and European in the interface, not in a comment. India's official
-index is CPCB's, on different breakpoints and from physical stations; a
-model-derived European number presented as "AQI" is silently misread by anyone
-who knows the Indian scale. `AirQualitySource` is an interface so a station
-feed replaces it without touching a caller.
+**Air quality is named for the scale it is on.** CPCB's National AQI is primary:
+the nearest CPCB station within 25 km of the canonical place with a current,
+complete reading, named with its distance, as an observation with the
+station's own time. CPCB publishes sub-indices, so the AQI is CPCB's rule — the
+highest sub-index, only with three pollutants including PM2.5 or PM10 — and
+never a sub-index recomputed as if it were a concentration. Where CPCB has
+nothing, the fallback is modelled (Open-Meteo/CAMS) on the **European**
+breakpoints, labelled modelled and European in the interface, and it states
+why CPCB was not used; it is never relabelled as CPCB. A model-derived European
+number presented as "AQI" is silently misread by anyone who knows the Indian
+scale. The map follows the same source and never paints a field between
+stations. `AirQualitySource` is the interface all of this sits behind.
 
 **Intent routing. The LLM is the exception path, not the default.** We are on
 free tiers with no billing, so the pattern layer is load-bearing architecture

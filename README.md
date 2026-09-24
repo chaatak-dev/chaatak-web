@@ -43,6 +43,8 @@ key, which does carry authority, appears nowhere in this codebase.
 | `CRON_SECRET` | Guards the alert daemon endpoint |
 | `WEATHER_SOURCE` | what visitors see. Real sources only — `open-meteo` |
 | `WARNING_SOURCE` | what the alert daemon polls. May be `fixture` |
+| `CPCB_DATA_GOV_API_KEY` | data.gov.in key for CPCB's real-time AQI feed. Without it every air quality reading is the labelled model |
+| `AIR_QUALITY_SOURCE` | Optional. `cpcb` (default: CPCB, modelled fallback), `cpcb-only`, or `open-meteo` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Accounts. Optional — without it, sign-in is absent and everything else works |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Accounts. Published to the browser by design; see below |
 
@@ -375,16 +377,32 @@ the wrong side of it that they are safe.
 
 ### Air quality
 
-`AirQualitySource` is an interface with one implementation today: Open-Meteo's
-CAMS model, reported on the **European** AQI breakpoints. It is labelled as
-modelled and labelled as European in the interface, not in a comment, and
-`station` is `null` and says so.
+`AirQualitySource` is an interface. The primary implementation is **CPCB's
+National AQI**, from CPCB's real-time station feed on data.gov.in
+(`lib/weather/cpcb.ts`). A place is answered by the nearest station within
+25 km of Chaatak's canonical coordinate for it that has a current, complete
+reading, and the rail names that station and its distance. The feed publishes
+each pollutant's **sub-index**, not its concentration, so a station's AQI is
+CPCB's own rule: the highest sub-index, stated only when at least three
+pollutants report and one is PM2.5 or PM10. Its provenance is `CPCB`,
+`observation`, and the station's own update time, read as IST.
+
+Where CPCB has no such station, or cannot be reached, the reading is Open-Meteo's
+CAMS model on the **European** breakpoints instead — still labelled modelled
+and European, `station` still `null`, and carrying why CPCB was not used. It
+is never relabelled as CPCB. The map follows the same source: CPCB's stations
+as dots on CPCB's bands, never a field painted between them; the modelled grid
+only when the feed cannot be read, and then under its own legend.
+
+The whole feed is about 3,500 rows and one request, cached for 15 minutes and
+shared by the rail and the map, with concurrent misses sharing one request and
+a failure backing off for a minute. The key stays server-side and is scrubbed
+from any logged error.
 
 India's official index is CPCB's, on different breakpoints and from physical
 monitoring stations. A model-derived European number presented as "AQI" is
-read by anyone who knows the Indian scale as something it is not. When a CPCB
-station feed is wired in behind the same interface it will carry a station and
-stop being an approximation; until then the number says exactly what it is.
+read by anyone who knows the Indian scale as something it is not, which is
+why the fallback says what it is in the interface, not in a comment.
 
 ---
 

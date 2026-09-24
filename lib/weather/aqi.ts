@@ -3,25 +3,31 @@
  *
  * THE THING THIS FILE IS CAREFUL ABOUT. India has an official air quality
  * index — the CPCB National AQI, computed from a real monitoring network on a
- * scale and breakpoints of its own. What this module currently returns is
- * NOT that. It is a European index computed from a global atmospheric model,
- * and the two disagree: the same air can be "moderate" on one scale and
- * "poor" on the other, because they are different scales with different
+ * scale and breakpoints of its own. The fallback this module can also return
+ * is NOT that. It is a European index computed from a global atmospheric
+ * model, and the two disagree: the same air can be "moderate" on one scale
+ * and "poor" on the other, because they are different scales with different
  * breakpoints answering to different regulators.
  *
  * So every value carries the index it was computed on and the fact that it
- * came from a model. Calling a CAMS-derived European AQI "the AQI" in an
- * Indian product would be the same category error as calling a model's
- * output an observation — fluent, plausible, and wrong in the direction that
- * matters, since air quality is a health number people act on.
+ * came from a station or a model. Calling a CAMS-derived European AQI "the
+ * AQI" in an Indian product would be the same category error as calling a
+ * model's output an observation — fluent, plausible, and wrong in the
+ * direction that matters, since air quality is a health number people act on.
  *
- * The station fields exist and are null. They are the seam CPCB data arrives
- * through: a real station has an id, a name and a distance, and a reading
- * that has those is a different kind of claim from one that does not.
+ * CPCB is primary (`lib/weather/cpcb.ts`). Where it has no station near enough
+ * with a current reading, the modelled figure is returned instead, still
+ * labelled European and modelled, and carrying why CPCB was not used. It is
+ * never relabelled as CPCB.
  */
 
 import { TTL, cached } from '../cache';
+import { ConfigurationError } from '../errors';
+import { europeanBand, type AqiBand } from './aqi-bands';
+import { cpcbAir, resolveCpcb, CPCB_SOURCE, MAX_STATION_KM, type CpcbMiss } from './cpcb';
 import type { Location, NoData, NoDataReason, Provenance } from './types';
+
+export type { AqiBand } from './aqi-bands';
 
 /**
  * Which index a number is on.
@@ -30,20 +36,12 @@ import type { Location, NoData, NoDataReason, Provenance } from './types';
  * who knows the CPCB scale will misread a European number silently.
  */
 export type AqiStandard =
-  /** CPCB National AQI. India's official index. Not yet wired. */
+  /** CPCB National AQI. India's official index. */
   | 'cpcb'
   /** The European Environment Agency index, as CAMS publishes it. */
   | 'european'
   /** The US EPA index. */
   | 'us';
-
-export type AqiBand =
-  | 'good'
-  | 'fair'
-  | 'moderate'
-  | 'poor'
-  | 'veryPoor'
-  | 'severe';
 
 export type AirQuality = {
   kind: 'aqi';
@@ -51,8 +49,16 @@ export type AirQuality = {
   value: number;
   standard: AqiStandard;
   band: AqiBand;
+  /**
+   * What the component numbers are.
+   *
+   * CPCB publishes each pollutant's sub-index, on the AQI's own scale and with
+   * no unit; the model publishes concentrations. Showing "58" beside PM2.5
+   * means something different in each, so the reading says which.
+   */
+  measure: 'concentration' | 'subIndex';
   /** The pollutants behind it, where the provider reports them. */
-  components: { key: 'pm2_5' | 'pm10' | 'no2' | 'o3' | 'so2'; value: number; unit: string }[];
+  components: { key: string; value: number; unit: string }[];
   /**
    * The station this came from, when it came from one.
    *
@@ -60,31 +66,26 @@ export type AirQuality = {
    * to decide whether it may say "measured at".
    */
   station: { id: string; name: string; distanceKm: number } | null;
+  /**
+   * Set when this reading stands in for the primary source, and why.
+   *
+   * A modelled figure shown because CPCB had no station nearby is a different
+   * statement from a modelled figure chosen on purpose, and the reader is told
+   * which one they are looking at.
+   */
+  fallback?: { from: string; miss: CpcbMiss; withinKm: number };
   provenance: Provenance;
 };
 
 export interface AirQualitySource {
   name: string;
   standard: AqiStandard;
+  /**
+   * What answers where this source cannot, if anything. Declared so a caller
+   * that reads the network directly — the map — follows the same rule.
+   */
+  fallback?: AirQualitySource;
   get(location: Location): Promise<AirQuality | NoData>;
-}
-
-/* ------------------------------------------------------------------ */
-/* Bands                                                               */
-/* ------------------------------------------------------------------ */
-
-/**
- * The European index's own bands. Each standard brings its own — CPCB's
- * breakpoints are different numbers with different names, and mapping one
- * onto the other is exactly the silent mistranslation this file refuses.
- */
-function europeanBand(value: number): AqiBand {
-  if (value <= 20) return 'good';
-  if (value <= 40) return 'fair';
-  if (value <= 60) return 'moderate';
-  if (value <= 80) return 'poor';
-  if (value <= 100) return 'veryPoor';
-  return 'severe';
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,7 +170,7 @@ export const openMeteoAir: AirQualitySource = {
 
         const units = body.current_units ?? {};
         const components: AirQuality['components'] = [];
-        const add = (key: AirQuality['components'][number]['key'], field: string) => {
+        const add = (key: string, field: string) => {
           const n = numberOrNull(current?.[field]);
           if (n !== null) components.push({ key, value: n, unit: units[field] ?? 'µg/m³' });
         };
@@ -185,6 +186,7 @@ export const openMeteoAir: AirQualitySource = {
           value,
           standard: 'european',
           band: europeanBand(value),
+          measure: 'concentration',
           components,
           // Modelled. There is no station, and saying so is the difference
           // between this and a CPCB reading.
@@ -205,13 +207,62 @@ export const openMeteoAir: AirQualitySource = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* CPCB first, the model where CPCB has nothing                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * CPCB's station reading where one is near enough and current; otherwise the
+ * modelled European figure, marked as the fallback with CPCB's reason.
+ *
+ * The fallback keeps every label it had — standard `european`, nature
+ * `model`, no station. Only the `fallback` note is added, so no path through
+ * here can present a modelled number as CPCB's.
+ */
+export const cpcbWithFallback: AirQualitySource = {
+  name: `${CPCB_SOURCE}, else ${SOURCE}`,
+  standard: 'cpcb',
+  fallback: openMeteoAir,
+
+  async get(location: Location): Promise<AirQuality | NoData> {
+    const cpcb = await resolveCpcb(location);
+    if (cpcb.kind === 'reading') return cpcb.air;
+
+    const modelled = await openMeteoAir.get(location);
+    if (modelled.kind === 'noData') return modelled;
+    return {
+      ...modelled,
+      fallback: { from: CPCB_SOURCE, miss: cpcb.miss, withinKm: MAX_STATION_KM },
+    };
+  },
+};
+
+const SOURCES: Record<string, AirQualitySource> = {
+  cpcb: cpcbWithFallback,
+  // CPCB with no fallback at all, for a deployment that would rather show
+  // nothing than a modelled index.
+  'cpcb-only': cpcbAir,
+  'open-meteo': openMeteoAir,
+};
+
 /**
  * The air quality source in use.
  *
- * One function, one config value, like every other provider choice in this
- * codebase — so the day a CPCB adapter exists, switching to it is a line here
- * and nothing above this file changes.
+ * One config value, like every other provider choice in this codebase:
+ * `AIR_QUALITY_SOURCE`, defaulting to CPCB with the modelled fallback. CPCB
+ * without its key configured simply misses everywhere, so the default is
+ * safe before the key is set — every reading is the labelled model.
+ *
+ * An unknown name throws rather than falling back, so a typo fails at the
+ * first request instead of quietly changing what the index means.
  */
 export function airQualitySource(): AirQualitySource {
-  return openMeteoAir;
+  const name = process.env.AIR_QUALITY_SOURCE?.trim() || 'cpcb';
+  const source = SOURCES[name];
+  if (!source) {
+    throw new ConfigurationError(
+      `Unknown AIR_QUALITY_SOURCE "${name}". Known: ${Object.keys(SOURCES).join(', ')}`,
+    );
+  }
+  return source;
 }

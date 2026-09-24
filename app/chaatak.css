@@ -3015,11 +3015,31 @@ html[data-keyboard] .voice:not(.voice--active) {
 }
 
 .rail__aqi-value--good { color: var(--sev-none-line); }
-.rail__aqi-value--fair { color: var(--sev-none-line); }
+.rail__aqi-value--fair,
+.rail__aqi-value--satisfactory { color: var(--sev-none-line); }
 .rail__aqi-value--moderate { color: var(--sev-watch-line); }
 .rail__aqi-value--poor { color: var(--sev-alert-line); }
 .rail__aqi-value--veryPoor,
 .rail__aqi-value--severe { color: var(--sev-warning-line); }
+
+/* Which station measured it, and how far away — part of the reading. */
+.rail__aqi-station {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.rail__aqi-parts-label {
+  margin-top: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.rail__aqi-parts-label + .rail__aqi-parts { margin-top: 4px; }
 
 .rail__aqi-parts {
   display: flex;
@@ -3041,16 +3061,17 @@ html[data-keyboard] .voice:not(.voice--active) {
   color: var(--text-faint);
 }
 
-/* The index and the fact that it is modelled are not fine print — they are
-   what stops a CPCB reader misreading a European number. */
+/* Which index, and measured or modelled, is not fine print — it is what
+   stops a CPCB reader misreading a European number. The provenance line
+   beneath carries the rule. */
 .rail__aqi-note {
   margin-top: 10px;
-  padding-top: 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
-  color: var(--text-faint);
-  border-top: 2px solid var(--hairline);
+  color: var(--text-soft);
 }
+
+.rail__aqi .provenance { margin-top: 8px; }
 
 /* ------------------------------------------------------------------ */
 /* The weather card                                                    */
@@ -3366,6 +3387,16 @@ html[data-keyboard] .voice:not(.voice--active) {
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* A station reading names its station; its provenance line follows. */
+.wmap__readout-station {
+  max-width: min(70vw, 20rem);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.wmap__readout .provenance { margin-top: 6px; padding-top: 6px; }
 
 .wmap__legend {
   position: absolute;
@@ -3753,6 +3784,14 @@ dialog.wmap::backdrop {
   gap: 8px 16px;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--hairline);
+}
+
+/* Which index the colours are on — stated, not implied by the legend. */
+.wmap__scale {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-soft);
 }
 
 .wmap__summary {

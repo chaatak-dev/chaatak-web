@@ -27,19 +27,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useApp } from './AppState';
+import { Provenance } from './Provenance';
 import {
+  aqiLayer,
   colourFor,
   DEFAULT_BASE_MAP,
   LAYERS,
   LAYER_ORDER,
+  type AqiScale,
   type Bounds,
   type LayerId,
+  type WeatherLayer,
 } from '@/lib/map/layers';
 import type { Location } from '@/lib/weather/types';
 
-type Sample = { lat: number; lon: number; value: number };
+/** A grid sample, or a station — which has a name and its own time. */
+type Sample = { lat: number; lon: number; value: number; name?: string; at?: string };
 
 type LayerData = {
+  /** The layer these points belong to, so a late answer is never drawn under another. */
+  layer: LayerId;
+  /** For air quality: which index the server answered on. */
+  scale?: AqiScale;
+  /** Who measured the points, where the server names them (stations). */
+  source?: string;
   points: Sample[];
   unit: string;
   /** Whether this layer has a source AT ALL. A permanent fact about it. */
@@ -47,6 +58,15 @@ type LayerData = {
   /** Whether the source that exists failed to answer THIS time. */
   failed: boolean;
 };
+
+/**
+ * The layer as it is actually drawn. Air quality takes its scale from the
+ * answer, so a modelled European grid is never drawn on CPCB's legend.
+ */
+function drawnLayer(layerId: LayerId, data: LayerData | null): WeatherLayer {
+  if (layerId === 'aqi' && data?.layer === 'aqi' && data.scale) return aqiLayer(data.scale);
+  return LAYERS[layerId];
+}
 
 /** How long to wait after a pan before asking for new numbers. */
 const DEBOUNCE_MS = 350;
@@ -84,7 +104,7 @@ export function WeatherMap({
   const [layerId, setLayerId] = useState<LayerId>('temperature');
   const [data, setData] = useState<LayerData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [inspected, setInspected] = useState<{ lat: number; lon: number; value: number } | null>(null);
+  const [inspected, setInspected] = useState<Sample | null>(null);
 
   const request = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,7 +181,7 @@ export function WeatherMap({
     const el = canvas.current;
     if (!instance || !el || !data) return;
 
-    const layer = LAYERS[layerId];
+    const layer = drawnLayer(layerId, data);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const width = el.clientWidth;
     const height = el.clientHeight;
@@ -175,7 +195,28 @@ export function WeatherMap({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    if (data.points.length === 0) return;
+    if (data.points.length === 0 || data.layer !== layerId) return;
+
+    /*
+     * Stations are drawn as what they are: points where an instrument stands.
+     * A blob would paint a field between them, and the air between two
+     * monitors was never measured.
+     */
+    if (layer.kind === 'stations') {
+      const r = 7;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(20, 20, 20, 0.6)';
+      for (const point of data.points) {
+        const at = instance.project([point.lon, point.lat]);
+        if (at.x < -r || at.y < -r || at.x > width + r || at.y > height + r) continue;
+        ctx.fillStyle = colourFor(layer, point.value);
+        ctx.beginPath();
+        ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      return;
+    }
 
     // Blob radius follows the sample spacing, so the field stays continuous
     // at every zoom instead of turning into dots when you zoom in.
@@ -215,7 +256,7 @@ export function WeatherMap({
     (bounds: Bounds) => {
       const layer = LAYERS[layerId];
       if (layer.availability.status === 'unavailable') {
-        setData({ points: [], unit: layer.unit, available: false, failed: false });
+        setData({ layer: layerId, points: [], unit: layer.unit, available: false, failed: false });
         return;
       }
 
@@ -240,6 +281,9 @@ export function WeatherMap({
           request.current = null;
           setLoading(false);
           setData({
+            layer: layerId,
+            scale: body?.scale === 'cpcb' || body?.scale === 'european' ? body.scale : undefined,
+            source: typeof body?.source === 'string' ? body.source : undefined,
             points: (body?.points ?? []) as Sample[],
             unit: body?.unit ?? LAYERS[layerId].unit,
             available: body?.availability?.status !== 'unavailable',
@@ -313,7 +357,7 @@ export function WeatherMap({
     };
   }, [data]);
 
-  const layer = LAYERS[layerId];
+  const layer = drawnLayer(layerId, data);
   const layerName = t(LAYER_LABEL[layerId]);
 
   /** The sample nearest the map's centre — the keyboard's way to inspect. */
@@ -326,7 +370,7 @@ export function WeatherMap({
 
   // What the canvas shows, as text: the range in view. The picture is for
   // eyes; this is for everyone.
-  const summary = describe(data, layerName, t);
+  const summary = describe(data, layer, layerName, t);
 
   return (
     <dialog
@@ -394,13 +438,28 @@ export function WeatherMap({
             </span>
             {/* Laid out on its own line; read with a pause rather than run together. */}
             <span className="sr-only">, </span>
-            <span className="wmap__readout-where">
-              {inspected.lat.toFixed(2)}, {inspected.lon.toFixed(2)}
-            </span>
+            {inspected.name ? (
+              <>
+                <span className="wmap__readout-station">{inspected.name}</span>
+                {inspected.at && data?.source && (
+                  <Provenance
+                    source={data.source}
+                    nature="observation"
+                    timestamp={inspected.at}
+                    basis="updated"
+                    timeZone="Asia/Kolkata"
+                  />
+                )}
+              </>
+            ) : (
+              <span className="wmap__readout-where">
+                {inspected.lat.toFixed(2)}, {inspected.lon.toFixed(2)}
+              </span>
+            )}
           </div>
         )}
 
-        <Legend layerId={layerId} unit={data?.unit ?? layer.unit} />
+        <Legend layer={layer} unit={data?.unit ?? layer.unit} />
       </div>
 
       {/*
@@ -408,6 +467,13 @@ export function WeatherMap({
         changes — once per settled view, never per frame of a pan.
       */}
       <div className="wmap__text">
+        {/* Which index the colours are on. Not fine print: 150 is "moderate"
+            on CPCB's scale and off the top of the European one. */}
+        {layerId === 'aqi' && data?.layer === 'aqi' && data.scale && (
+          <p className="wmap__scale">
+            {data.scale === 'cpcb' ? t('map.aqiCpcb') : t('rail.aqiModelled')}
+          </p>
+        )}
         <p className="wmap__summary" role="status" aria-live="polite">
           {summary}
         </p>
@@ -446,12 +512,16 @@ function nearest(points: Sample[], lat: number, lng: number): Sample | null {
 /** One sentence: the layer and the range in view. */
 function describe(
   data: LayerData | null,
+  layer: WeatherLayer,
   layerName: string,
   t: ReturnType<typeof useApp>['t'],
 ): string {
   if (!data) return '';
   if (!data.available) return t('map.noSource');
-  if (data.failed || data.points.length === 0) return t('map.unreachable');
+  if (data.failed) return t('map.unreachable');
+  // No station in view is a fact about the network, not a failure to answer.
+  if (layer.kind === 'stations' && data.points.length === 0) return t('map.noStations');
+  if (data.points.length === 0) return t('map.unreachable');
 
   const round = (v: number) => Math.round(v * 10) / 10;
   let min = Infinity;
@@ -464,7 +534,7 @@ function describe(
   // state, from the snapshot the answer was written from; a grid sample
   // "near" it would be a second number for the same place, a tenth of a
   // degree off, with no way for a reader to tell which one to believe.
-  return t('map.summary', {
+  return t(layer.kind === 'stations' ? 'map.summaryStations' : 'map.summary', {
     layer: layerName,
     min: round(min),
     max: round(max),
@@ -485,16 +555,19 @@ const LAYER_LABEL = {
 } as const;
 
 /** The scale, drawn from the same stops the canvas paints from. */
-function Legend({ layerId, unit }: { layerId: LayerId; unit: string }) {
-  const layer = LAYERS[layerId];
+function Legend({ layer, unit }: { layer: WeatherLayer; unit: string }) {
   const stops = layer.stops;
   if (stops.length === 0) return null;
 
-  const lo = stops[0][0];
+  const lo = layer.min ?? stops[0][0];
   const hi = stops[stops.length - 1][0];
-  const ramp = stops
-    .map(([value, colour]) => `${colour} ${((value - lo) / (hi - lo)) * 100}%`)
-    .join(', ');
+  const at = (value: number) => ((value - lo) / (hi - lo)) * 100;
+  // A banded index is drawn in hard steps, each band as wide as its range.
+  const ramp = layer.stepped
+    ? stops
+        .map(([upper, colour], i) => `${colour} ${at(i === 0 ? lo : stops[i - 1][0])}% ${at(upper)}%`)
+        .join(', ')
+    : stops.map(([value, colour]) => `${colour} ${at(value)}%`).join(', ');
 
   return (
     <div className="wmap__legend">
@@ -502,7 +575,8 @@ function Legend({ layerId, unit }: { layerId: LayerId; unit: string }) {
       <span className="wmap__legend-ramp" style={{ background: `linear-gradient(90deg, ${ramp})` }} />
       <span className="wmap__legend-end">
         {hi}
-        {unit}
+        {/* "500 AQI", not "500AQI"; a symbol like °C stays attached. */}
+        {/^[A-Za-z]/.test(unit) ? ` ${unit}` : unit}
       </span>
     </div>
   );
