@@ -310,6 +310,11 @@ that opened it. Menus are disclosures, not `role="menu"`. The map is a native
 Hindi with English rules. A warning is a band in words as well as colour,
 above every answer written under one.
 
+Reflow is checked at 320px wide and at 200% and 400% zoom. Below 300px of
+height — 400% zoom on a laptop — the fixed chrome alone would fill the screen,
+so the page stops being a fixed shell and scrolls as one document: nothing is
+clipped and the transcript is never squeezed to nothing.
+
 ### The map
 
 MapLibre GL over [OpenFreeMap](https://openfreemap.org) vector tiles. The

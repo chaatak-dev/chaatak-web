@@ -3785,3 +3785,61 @@ dialog.wmap::backdrop {
   color: var(--text);
   background: color-mix(in srgb, var(--ink) 7%, transparent);
 }
+
+/* ------------------------------------------------------------------ */
+/* Too short for an app shell                                          */
+/*                                                                     */
+/* At 400% zoom a 1280×800 screen is 320×200 CSS pixels. The fixed      */
+/* chrome alone — masthead, voice, composer — is taller than that, so   */
+/* the transcript between them got no height at all and the composer    */
+/* was clipped: the answer could not be read. Below this height the     */
+/* page stops being a fixed shell and scrolls as one document, which is */
+/* what reflow asks for. Nothing is clipped, everything is reached by   */
+/* scrolling, and an ordinary landscape phone stays above the line and  */
+/* keeps its pinned composer.                                           */
+/* ------------------------------------------------------------------ */
+
+@media (max-height: 300px) {
+  body:has(.chat) {
+    height: auto;
+    overflow: visible;
+  }
+
+  .shell {
+    height: auto;
+    min-height: var(--viewport-height, 100dvh);
+    overflow: visible;
+  }
+
+  .shell__main,
+  .chat {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .chat__scroll {
+    flex: none;
+    overflow: visible;
+  }
+
+  /* A column on a wide, short window: its content, not a second scroller. */
+  .rail {
+    overflow: visible;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollers contain what is hidden inside them                        */
+/*                                                                     */
+/* .sr-only is absolutely positioned. With no positioned ancestor its   */
+/* containing block is the page, so a scroller's overflow does not clip */
+/* it: the provenance line's "Source:" and separators, sitting far down */
+/* a long transcript, stretched the document below the shell — and the  */
+/* next focus change could scroll the whole app up by that much. A      */
+/* positioned scroller is their containing block, and clips them.       */
+/* ------------------------------------------------------------------ */
+
+.chat__scroll,
+.rail {
+  position: relative;
+}
