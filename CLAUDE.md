@@ -200,15 +200,23 @@ interface WeatherSource {
   getCurrent(loc: Location): Promise<Reading | NoData>;
   getForecast(loc: Location, days: number): Promise<Forecast | NoData>;
   getWarnings(district: DistrictId): Promise<Warning[] | NoData>;
+  getHistory(loc: Location, request: HistoryRequest): Promise<History | NoData>;
 }
 ```
 
 Every return type carries provenance, and provenance is not optional metadata
 — it is part of the value. It states `source`, `issuedAt` and **`nature`**:
-`observation`, `model` or `bulletin`. A reader not told which of the three
-they are looking at cannot judge the number, and the three age differently —
-`lib/weather/freshness.ts` keeps a threshold per nature and gives an unknown
-nature the strictest one.
+`observation`, `model` or `bulletin` — and, for the past, `archivedForecast`
+or `reanalysis`, both modelled and **never called observations**, because
+neither came from a gauge. A reader not told which they are looking at cannot
+judge the number, and they age differently — `lib/weather/freshness.ts` keeps
+a threshold per nature and gives an unknown nature the strictest one.
+
+**History answers from history or says there is none.** A question about the
+past never falls back to the current reading or the forecast; no record is
+`noData`. Only finished hours and days are summarised. "Last rain" is an
+event — wet hours grouped into spells, with a minimum total — never the last
+hour that happened to read above zero.
 
 **Age is measured from `observedAt ?? issuedAt`, never from `fetchedAt`.**
 Fetch time is a property of the network; substituting it makes every stale
@@ -258,6 +266,17 @@ rather than an optimisation. Three layers, in order:
 
 Log which layer served each query. We must be able to state what percentage
 of traffic never touched a model.
+
+**Understand the turn before looking for a place.** What a turn IS —
+greeting, reaction, thanks, correction, follow-up, a request for a language, a
+weather question — is decided first (`lib/chat/understand.ts`), and only a
+turn that needs a place gets one resolved. "wassup", "ohh really" and "that's
+crazy" are conversation, answered without a fetch; a failed parse is asked
+about and **never geocoded as a whole message**. A place the model names must
+be a verbatim slice of what the user wrote. The conversation carries forward
+in the `StandingQuery` — place, topic, window, a question still waiting for a
+place, the language — and the server distrusts it: the place is re-resolved
+from its name every turn, and a severity in it can only tighten the gate.
 
 **Warning vocabulary is never machine-translated.** IMD's district warning
 codes (17) and nowcast categories (19) are a fixed enumerated set. They are
@@ -328,9 +347,18 @@ it by becoming the `authenticated` role and trying.
 independent: choosing a voice cannot change the script of written text, and
 someone can read English chrome while asking and being answered in Hindi. Each
 defaults to `auto`, and `auto` means something different and specific for
-each — the device's ordered `navigator.languages` for the interface, mirror-
-the-user for the assistant, follow-the-other-choices for voice. An explicit
-choice is never overridden by a device change.
+each — the device's ordered `navigator.languages` for the interface, the
+language, script and register of each turn for the assistant, and the
+language actually spoken for voice. An explicit choice is never overridden by
+a device change.
+
+**The reply's language is decided before anything is written**, in
+`lib/i18n/detect.ts` — the one language system — and handed to the renderer
+and the templates, never left for a model to guess. Hinglish is answered in
+Latin-script Hindi: not English, not Devanagari. A short turn ("ok", "ohh
+really") carries too little evidence and inherits the conversation's language.
+**Voice detection is never faked:** a recogniser that cannot detect a language
+says which one it is listening in.
 
 Automatic interface detection follows `support.interface`, so a language
 becomes detectable in the same commit that makes it readable — Hindi and
@@ -529,7 +557,9 @@ Kubernetes. None of them change whether a farmer gets a warning.
 - [ ] Every displayed value shows source and issue time
 - [ ] `noData` renders as a statement, never as an estimate
 - [ ] A stale observation never renders as the present
-- [ ] Every value states its nature: observation, model or bulletin
+- [ ] Every value states its nature: observation, model, bulletin, archived forecast or reanalysis
+- [ ] A conversational turn is never geocoded
+- [ ] A history question never falls back to now or the forecast
 - [ ] The map draws no boundary IMD did not publish
 - [ ] A modelled European index is never called India's official AQI
 - [ ] Warning taxonomy renders from templates, never live MT

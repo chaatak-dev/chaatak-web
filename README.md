@@ -169,12 +169,37 @@ Three preferences, and they do not move each other:
 | | `auto` means | Stored |
 | --- | --- | --- |
 | **Interface** | the device's ordered `navigator.languages` | profile · localStorage |
-| **Assistant** | mirror whatever language and script the question was in | profile · localStorage |
-| **Voice** | follow the assistant if set, otherwise the interface | profile · localStorage |
+| **Assistant** | the language, script and register of each turn, read from the turn | profile · localStorage |
+| **Voice** | the language actually spoken, detected per utterance | profile · localStorage |
 
 `UI = English, Assistant = Hindi, Voice = Hindi` is a valid configuration, and
 so is every other combination. An explicit choice is never overridden by a
 device change; picking **Auto** again hands control back to the device.
+
+**One language system, decided before anything is written.**
+`lib/i18n/detect.ts` resolves each turn to a language, a script and a
+confidence, and the result is handed to the renderer and the templates rather
+than left for a model to guess. Script decides first. Latin text is weighed by
+function words — `mein`, `hai`, `kab`, `kya` against `the`, `is`, `what` — so
+`ghaziabad mein aaj weather kaisa hai?` is Hinglish and is answered in
+Latin-script Hindi, never in English and never in Devanagari. A turn of three
+words or fewer carries almost no evidence, so it inherits the conversation's
+language: "ohh really" after a Hinglish answer stays Hinglish. The inheritance
+is one-sided on purpose — a short Hindi turn switches an English
+conversation, but "ok" and "thanks" do not pull a Hindi one into English. A
+language asked for in words ("Hindi mein batao") holds for the rest of the
+conversation. The detected spoken language is evidence about the turn; the
+voice *setting* never is.
+
+**Voice on auto detects; it does not assume.** With Bhashini configured, an
+utterance goes to an Indic recogniser and to English in parallel and the
+transcripts are compared (`lib/speech/detect.ts`). The comparison has to
+account for both failure modes: an Indic recogniser transliterates English
+speech into Devanagari, and Whisper tends to *translate* Hindi into English
+rather than transcribe it. A confident prior (the conversation's language)
+takes a fast path through one recogniser. Without Bhashini the browser's own
+recogniser cannot detect a language at all, and the voice control says so and
+names the language it is listening in — it does not pretend to detect.
 
 **Automatic detection follows `support.interface` in `lib/i18n/languages.ts`,
 not a separate list.** A language becomes auto-detectable in the same commit
@@ -188,6 +213,41 @@ languages. Nothing there is machine-translated and nothing there may be — the
 warning taxonomy lives under the same rule next door, and a catalogue that
 accepts machine output for "just the chrome" is one edit from accepting it for
 a severity.
+
+---
+
+## Conversation
+
+**What a turn IS is decided before anything is looked up.** The old pipeline
+parsed for a place first and, when the parse failed, geocoded the whole
+message — so "wassup" and "ohh really" were sent to the geocoder as place
+names. `lib/chat/understand.ts` now reads the turn in order:
+
+1. a request for a language ("Hindi mein batao");
+2. social talk — greetings, thanks, "ok", "wow", "seriously?", "that's crazy"
+   — matched as a whole message from a lexicon (`lib/chat/social.ts`), and
+   answered from templates with no fetch and no geocode;
+3. corrections — "actually Mumbai", "I meant Lucknow, not Kanpur";
+4. follow-ups that lean on the conversation — "and tomorrow?", "what about
+   wind?", "and before that?";
+5. whole weather questions, read for shape and time (`lib/parse/time.ts`
+   knows that कल is yesterday in `कल बारिश हुई थी` and tomorrow in
+   `कल बारिश होगी`);
+6. a bare place name, only if the gazetteer confirms it and it contains no
+   conversational word;
+7. only then the model, whose place must be a verbatim slice of the message.
+
+With every provider out, an unreadable turn is asked about. It is never
+geocoded.
+
+**The conversation carries forward** in a `StandingQuery`: the place, the
+topic and variable, the time window, a question still waiting for a place,
+the last rain spell reported, the loudest severity in force, and the
+conversation's language. It is the client's to send and the server's to
+distrust — the place is re-resolved from its name every turn, and a severity
+in it can only make the gate stricter. A conversation reopened from history
+has no standing, so the server takes the place from its last grounded turn,
+by name.
 
 ---
 
@@ -215,7 +275,40 @@ at the bottom. The container is a `min-height: 0` flex column with
 `overflow-anchor: none`, not a scrolling page under an absolutely positioned
 composer — the previous arrangement needed padding to match a height it could
 not know, and the transcript ran underneath the composer whenever that guess
-was wrong.
+was wrong. The composer sits outside the scroller, and the few containers that
+do scroll (transcript, sidebar list, rail, settings) have thin scrollbars with
+a stable gutter, so content does not shift when one appears.
+
+### Voice
+
+**The microphone is a session, not a recorder.** Tap once and talk. When you
+stop, the question goes by itself; the answer is spoken; it listens again —
+until Stop. Talking over the answer stops it (barge-in). The states are a pure
+machine in `lib/speech/session.ts` — idle, requesting permission, listening,
+speech detected, processing, speaking, stopped, error — and every one of them
+is written beside the button and announced once, so the control reads the same
+with animation off.
+
+End of speech is detected by energy, not by a timer (`lib/speech/vad.ts`): an
+adaptive noise floor, separate thresholds to start and stop (so a pause
+mid-sentence does not end it), a minimum amount of voiced audio, and a check
+that the level actually varies, so a fan or traffic is never submitted as a
+question. The microphone opens with echo cancellation and noise suppression,
+only while a session runs, and the tracks are stopped when it ends. While the
+answer plays, the start threshold is raised so the speaker's own voice leaking
+back does not count as barging in.
+
+### Accessibility
+
+WCAG 2.2 AA is the floor, checked with axe-core on the empty chat, an answer,
+a live voice session, settings, the map and the phone drawer, in light and
+dark, at 1440px and 360px. The drawer is modal when it is one: focus moves in,
+the page behind is `inert`, Escape closes it and focus returns to the button
+that opened it. Menus are disclosures, not `role="menu"`. The map is a native
+`<dialog>` and says in text what its canvas shows. Messages carry their own
+`lang` — `hi-Latn` for Hinglish, so a screen reader does not read romanised
+Hindi with English rules. A warning is a band in words as well as colour,
+above every answer written under one.
 
 ### The map
 
@@ -378,6 +471,32 @@ threshold says so in words, with its age.
 The provenance line reads `Open-Meteo · model · Updated 05:15 IST`. `endpoint`
 is still carried for traceability and is no longer rendered — an API path told
 the farmer nothing and told everyone else our URL structure.
+
+### History: what the weather did
+
+"When did it last rain?", "rain in the last 24 hours", "yesterday", "last
+week", a date — `WeatherSource.getHistory`, behind the same interface as
+everything else. Two natures are added, and neither is called an observation,
+because neither came from a rain gauge:
+
+- **`archivedForecast`** (`model archive`): Open-Meteo's forecast endpoint with
+  `past_days`, up to 92 days back. Recent and close to what the models
+  believed at the time; the values are revised as later runs land, so the same
+  question can get a slightly different answer an hour later.
+- **`reanalysis`** (`reanalysis`): ERA5 through the archive API, pinned with
+  `models=era5`, for dates older than that. Consistent, and days behind.
+
+Only finished hours and finished days are summarised — a history that includes
+the current hour reports rain that has not finished falling — and the
+provenance says `Data to 17:00 IST` rather than when the file was written. A
+history question never falls back to the current reading or to the forecast:
+no record is `noData`, stated as such.
+
+**"Last rain" is an event, not the last hour above zero.** `lib/weather/history.ts`
+groups wet hours (≥ 0.1 mm) into spells separated by at least three dry hours,
+and a spell counts as rain only when it totals at least 1 mm; a trace since
+then is reported as a trace. It searches 14 days, then widens to 92, and
+"and before that?" continues from the start of the spell it last reported.
 
 ## Failure reporting
 
