@@ -407,3 +407,43 @@ test('under an orange warning the answer is told to open with it, and the templa
   assert.ok(reply.text.startsWith('Orange warning'), reply.text);
   assert.equal(c.standing()?.severity, 'alert', 'carried, so a later "ohh really" is checked too');
 });
+
+/* ------------------------------------------------------------------ */
+/* A conversation reopened from history                                 */
+/* ------------------------------------------------------------------ */
+
+test('a reopened conversation carries on from its last grounded turn, by name', async () => {
+  const first = await conversation().say('weather in Lucknow');
+  assert.equal(first.grounding?.place.name, 'Lucknow');
+
+  // Reopened: the transcript came back from storage, the view's standing did not.
+  const { deps, calls } = makeDeps();
+  const history: Message[] = [
+    { id: 'u1', role: 'user', text: 'weather in Lucknow', lang: 'en', at: NOW.toISOString() },
+    { id: 'a1', role: 'assistant', text: first.text, lang: first.lang, at: NOW.toISOString(), grounding: first.grounding },
+    { id: 'u2', role: 'user', text: 'and tomorrow?', lang: 'en', at: NOW.toISOString() },
+  ];
+  const { reply } = await answerQuestion(
+    { question: 'and tomorrow?', lang: 'en', assistant: 'auto', history, standing: null, coords: null },
+    deps,
+  );
+  assert.notEqual(reply.needsLocation, true, 'not asked "which place?" about a conversation that has one');
+  assert.equal(reply.grounding?.place.name, 'Lucknow');
+  assert.deepEqual(calls.resolve, ['Lucknow'], 're-resolved from its name, like any carried place');
+  assert.match(reply.text, /31\.8°C/, 'tomorrow, from a fresh fetch');
+});
+
+test('a reopened conversation with no grounded turn still asks where', async () => {
+  const { deps, calls } = makeDeps();
+  const history: Message[] = [
+    { id: 'u1', role: 'user', text: 'hello', lang: 'en', at: NOW.toISOString() },
+    { id: 'a1', role: 'assistant', text: 'Hello! Ask me about the weather.', lang: 'en', at: NOW.toISOString() },
+    { id: 'u2', role: 'user', text: 'and tomorrow?', lang: 'en', at: NOW.toISOString() },
+  ];
+  const { reply } = await answerQuestion(
+    { question: 'and tomorrow?', lang: 'en', assistant: 'auto', history, standing: null, coords: null },
+    deps,
+  );
+  assert.equal(reply.needsLocation, true);
+  assert.equal(calls.resolve.length, 0, 'nothing guessed');
+});

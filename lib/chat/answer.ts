@@ -214,6 +214,33 @@ function readStanding(raw: StandingQuery | null): StandingQuery | null {
   };
 }
 
+/**
+ * The standing, for a conversation that arrived without one.
+ *
+ * A conversation reopened from history starts its view with no standing —
+ * the transcript is stored, the view's working state is not — so "and
+ * tomorrow?" as its first question would be asked "which place?" about a
+ * conversation that has been about Lucknow all along. The last turn that
+ * reported values says where the conversation was.
+ *
+ * By NAME only, re-resolved like any carried place. Nothing in a stored turn
+ * is used as a value, and a severity read from one can only make the gate
+ * stricter.
+ */
+function standingFromHistory(history: Message[]): StandingQuery | null {
+  const last = [...history].reverse().find((m) => m.role === 'assistant' && m.grounding?.place?.name);
+  if (!last?.grounding) return null;
+  return readStanding({
+    place: last.grounding.place.name,
+    resolvedPlace: null,
+    intent: 'current',
+    timeWindow: { kind: 'now' },
+    variable: 'all',
+    setAt: typeof last.at === 'string' ? last.at : new Date(0).toISOString(),
+    severity: last.grounding.severity,
+  });
+}
+
 function readWindow(raw: unknown): TimeWindow | null {
   if (!raw || typeof raw !== 'object') return null;
   const w = raw as Record<string, unknown>;
@@ -259,7 +286,7 @@ export async function answerQuestion(input: AnswerInput, overrides: Partial<Answ
   const now = deps.now();
   const today = todayInIndia(now);
   const { question, history } = input;
-  const standing = readStanding(input.standing);
+  const standing = readStanding(input.standing) ?? standingFromHistory(history);
 
   /* ---- understand the turn: what IS it? --------------------------- */
 

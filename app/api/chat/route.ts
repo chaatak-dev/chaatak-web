@@ -51,6 +51,12 @@ type ChatRequest = {
    * second-guessed by the script of the question.
    */
   assistantLang?: string;
+  /**
+   * The language the speech recogniser DETECTED in this turn, when it was
+   * spoken and detection ran. Evidence about this one turn, weighed with
+   * the words themselves; never a setting, and absent for typed text.
+   */
+  heard?: string | null;
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -95,6 +101,7 @@ export async function POST(request: Request): Promise<Response> {
       history: Array.isArray(body.history) ? body.history : [],
       standing: body.standing ?? null,
       coords: readCoords(body.coords),
+      heard: isLanguageCode(body.heard) ? body.heard : null,
     });
 
     /*
