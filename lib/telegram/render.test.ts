@@ -48,8 +48,11 @@ test('a value the source did not give is a dash, never filled in', () => {
 
 test('every block carries its own provenance, with the kind of value it is', () => {
   const { html } = weatherCard(snapshot(), 'en', { watch: 'offer' });
-  assert.match(html, /Open-Meteo · model · Updated \d\d:\d\d IST/);
-  assert.match(html, /IMD · bulletin · Issued \d\d:\d\d IST/);
+  // The fixture stamps its values minutes before now, so just after midnight
+  // they fall on yesterday and the stamp rightly gains its date — "23 Sept,
+  // 23:56 IST". The date is optional here; the time never is.
+  assert.match(html, /Open-Meteo · model · Updated (\d{1,2} \w+, )?\d\d:\d\d IST/);
+  assert.match(html, /IMD · bulletin · Issued (\d{1,2} \w+, )?\d\d:\d\d IST/);
   assert.ok(!html.includes('/v1/forecast') && !html.includes('districtwarning'), 'no endpoint is ever shown');
 });
 
