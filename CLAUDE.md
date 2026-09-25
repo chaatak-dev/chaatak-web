@@ -258,6 +258,19 @@ number presented as "AQI" is silently misread by anyone who knows the Indian
 scale. The map follows the same source and never paints a field between
 stations. `AirQualitySource` is the interface all of this sits behind.
 
+**Climate analysis is one dataset, one request, and no causes.** `/climate`
+(`lib/climate/`) reads ERA5 reanalysis only — never mixed with the forecast
+archive or ERA5-Land, because a trend across a dataset seam measures the seam.
+Open-Meteo weighs archive calls by length and accepts about one multi-decade
+request a minute, so an analysis is exactly one upstream call, cached by any
+range and bundle that covers it, with identical requests in flight shared; a
+refusal is shown as "archive busy", never retried or filled. Averages need 90%
+of their days, totals and counts all of them, trends ten years and a 95% test
+before they are called clear. Only summaries cross the network. The optional
+explanation is shown the computed statistics only, recomputed server-side, and
+is rejected for any number not in them, any cause (climate change, emissions,
+El Niño…) or any station claim.
+
 **Intent routing. The LLM is the exception path, not the default.** We are on
 free tiers with no billing, so the pattern layer is load-bearing architecture
 rather than an optimisation. Three layers, in order:

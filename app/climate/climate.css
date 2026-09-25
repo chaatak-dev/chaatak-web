@@ -1,0 +1,966 @@
+/* Historical climate analysis.
+   Plain CSS on brand.css tokens, loaded only by /climate. Like the rest of
+   Chaatak it reads as a notice rather than a dashboard: paper, ink, hairline
+   rules, one teal accent for what can be pressed. The only colours beyond
+   that are the two climate tokens, and they appear only inside a chart that
+   also says in words what they mean. The page scrolls as one document —
+   nothing inside it scrolls on its own except a wide table, sideways. */
+
+.climate .masthead__inner {
+  max-width: 64rem;
+}
+
+.climate__main {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 24px var(--gutter) calc(48px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- controls ------------------------------------------------------ */
+
+.climate__controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 22px;
+  padding: 18px var(--gutter) 20px;
+  margin-inline: calc(var(--gutter) * -1);
+  background: var(--surface);
+  border-block: 1px solid var(--hairline);
+}
+
+.climate__field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.climate__label {
+  display: block;
+  margin-bottom: 7px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+:lang(hi) .climate__label {
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.climate__hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.climate__sublabel {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.climate__input,
+.climate__select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--paper);
+  border: 1.5px solid var(--border-control);
+  border-radius: var(--radius);
+}
+
+.climate__select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-soft) 50%),
+    linear-gradient(135deg, var(--text-soft) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.climate__input:focus-visible,
+.climate__select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.climate__examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.climate__chip {
+  min-height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.climate__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.climate__pair + .climate__note,
+.climate__select + .climate__pair {
+  margin-top: 8px;
+}
+
+.climate__note {
+  margin-top: 7px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.climate__note--block {
+  margin-top: 12px;
+}
+
+/* Presets: radio buttons dressed as a row of choices. The native input stays
+   in the accessibility tree and takes the focus; only its dot is hidden. */
+.climate__presets,
+.climate__chips,
+.climate__segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.climate__preset,
+.climate__toggle,
+.climate__seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+  background: var(--paper);
+  border: 1.5px solid var(--border-control);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.climate__toggle {
+  min-height: 40px;
+  font-weight: 500;
+}
+
+.climate__preset input,
+.climate__toggle input,
+.climate__seg input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.climate__preset:has(input:focus-visible),
+.climate__toggle:has(input:focus-visible),
+.climate__seg:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.climate__preset--on,
+.climate__toggle--on,
+.climate__seg--on {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+.climate__toggle--on span::before {
+  content: '✓ ';
+}
+
+.climate__toggle--off {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.climate__groups {
+  display: grid;
+  gap: 12px;
+}
+
+.climate__group-name {
+  margin-bottom: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.climate__actions {
+  display: flex;
+}
+
+.climate__analyze {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 28px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--paper);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.climate__analyze:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.climate__analyze:focus-visible,
+.climate__chip:focus-visible,
+.climate__explain-button:focus-visible,
+.chart__reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (min-width: 720px) {
+  .climate__controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-inline: 0;
+    padding: 22px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-card);
+  }
+
+  .climate__field--place,
+  .climate__field--wide {
+    grid-column: 1 / -1;
+  }
+
+  .climate__field--place .climate__input {
+    max-width: 28rem;
+  }
+
+  .climate__groups {
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  }
+
+  .climate__actions {
+    align-items: end;
+  }
+}
+
+/* ---- states ------------------------------------------------------- */
+
+.climate__results {
+  margin-top: 28px;
+  min-height: 320px;
+  outline: none;
+}
+
+.climate__empty {
+  padding: 22px var(--gutter);
+  margin-inline: calc(var(--gutter) * -1);
+  border-left: 3px solid var(--accent);
+}
+
+.climate__empty-title {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.climate__empty p {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.climate__empty ul {
+  margin-top: 12px;
+  padding-left: 1.2em;
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+.climate__loading {
+  margin-bottom: 14px;
+  font-size: 15px;
+  color: var(--text-soft);
+}
+
+.climate__skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 10px;
+}
+
+.climate__skeleton-tiles span,
+.climate__skeleton-chart {
+  display: block;
+  height: 92px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  animation: climate-pulse 1.4s ease-in-out infinite;
+}
+
+.climate__skeleton-chart {
+  height: 300px;
+  margin-top: 18px;
+}
+
+@keyframes climate-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .climate__skeleton-tiles span,
+  .climate__skeleton-chart {
+    animation: none;
+  }
+}
+
+.climate__absence {
+  margin-top: 0;
+}
+
+.climate__absence-body {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* ---- results ------------------------------------------------------ */
+
+.climate__result-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.climate__place {
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.climate__scope {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--text-soft);
+}
+
+.climate__section {
+  margin-top: 26px;
+}
+
+.climate__h3 {
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+:lang(hi) .climate__h3 {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.climate__finding-group + .climate__finding-group,
+.climate__finding-group + .climate__tiles {
+  margin-top: 18px;
+}
+
+.climate__finding-param {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.climate__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 10px;
+}
+
+.climate__tiles--wide {
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+
+.climate__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 13px 13px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border-top: 3px solid var(--hairline);
+}
+
+.climate__tile[data-tone='warm'] {
+  border-top-color: var(--clim-warm);
+}
+
+.climate__tile[data-tone='cool'] {
+  border-top-color: var(--clim-cool);
+}
+
+.climate__tile-label {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-soft);
+}
+
+.climate__tile-value {
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.climate__tile-note {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.climate__lead .climate__figure {
+  margin-top: 0;
+}
+
+.climate__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 28px;
+}
+
+@media (min-width: 900px) {
+  .climate__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.climate__figure {
+  min-width: 0;
+  margin: 22px 0 0;
+}
+
+.climate__figure figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.climate__figure-title {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.climate__figure-note {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+/* ---- charts (adapted from Bklit UI; see charts/BKLIT-LICENSE.txt) --- */
+
+.chart {
+  position: relative;
+}
+
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.chart__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart__swatch {
+  flex: none;
+  display: inline-block;
+}
+
+.chart__swatch--line {
+  width: 16px;
+  height: 2px;
+  background: var(--tone);
+}
+
+.chart__swatch--dash {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed var(--tone);
+}
+
+.chart__swatch--bar {
+  width: 10px;
+  height: 10px;
+  background: var(--tone);
+  border-radius: 2px;
+}
+
+.chart__swatch--band {
+  width: 14px;
+  height: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.chart__swatch--dot {
+  width: 8px;
+  height: 8px;
+  background: var(--tone);
+  border-radius: 50%;
+}
+
+.chart__plot {
+  position: relative;
+  width: 100%;
+  border-radius: 4px;
+}
+
+.chart__plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chart__svg {
+  display: block;
+  overflow: visible;
+  /* A horizontal finger inspects; a vertical one still scrolls the page. */
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+
+.chart__grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.chart__zero {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+}
+
+.chart__tick {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--text-faint);
+}
+
+.chart__band {
+  fill: var(--surface);
+}
+
+.chart__reference {
+  stroke: var(--text-soft);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.chart__trend {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.chart__crosshair {
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.chart__dot {
+  fill: var(--paper);
+  stroke-width: 2.5;
+}
+
+.chart__cell-focus {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.chart__tooltip {
+  position: absolute;
+  top: 6px;
+  z-index: 2;
+  min-width: 9rem;
+  max-width: 15rem;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 12%, transparent);
+  transform: translateX(12px);
+  pointer-events: none;
+}
+
+.chart__tooltip--flip {
+  transform: translateX(calc(-100% - 12px));
+}
+
+.chart__tooltip-title {
+  margin-bottom: 4px;
+  font-weight: 650;
+}
+
+.chart__tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart__tooltip-row--muted {
+  color: var(--text-soft);
+}
+
+.chart__tooltip-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.chart__tooltip-value {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart__brush {
+  margin-top: 10px;
+}
+
+.chart__brush-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.chart__reset {
+  min-height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.chart__brush-track {
+  position: relative;
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.chart__brush-track svg {
+  display: block;
+  touch-action: none;
+}
+
+.chart__brush-shade {
+  fill: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+
+.chart__brush-window {
+  fill: transparent;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  cursor: grab;
+}
+
+.chart__handle {
+  cursor: ew-resize;
+  outline: none;
+}
+
+.chart__handle-grip {
+  fill: var(--accent);
+}
+
+.chart__handle:focus-visible .chart__handle-grip {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.heatmap__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.heatmap__ramp {
+  display: inline-block;
+  width: 80px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.heatmap__ramp--diverging {
+  background: linear-gradient(90deg, var(--from), var(--paper), var(--to));
+  border: 1px solid var(--hairline);
+}
+
+.heatmap__ramp--sequential {
+  background: linear-gradient(90deg, var(--paper), var(--clim-cool));
+  border: 1px solid var(--hairline);
+}
+
+.heatmap__range {
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap__missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.heatmap__hatch {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  background: repeating-linear-gradient(45deg, var(--surface) 0 2px, var(--hairline) 2px 4px);
+}
+
+/* ---- rain by season ------------------------------------------------ */
+
+.climate__shares {
+  display: grid;
+  gap: 10px;
+}
+
+.climate__share-label {
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.climate__share-bar {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.climate__share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One hue, four steps: the seasons are ordered in time, not categories. */
+.climate__share--0 { background: color-mix(in oklab, var(--clim-cool) 22%, var(--paper)); color: var(--text); }
+.climate__share--1 { background: color-mix(in oklab, var(--clim-cool) 42%, var(--paper)); color: var(--text); }
+.climate__share--2 { background: var(--clim-cool); color: var(--paper); }
+.climate__share--3 { background: color-mix(in oklab, var(--clim-cool) 62%, var(--paper)); color: var(--text); }
+
+.climate__share-key {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.climate__share-key li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.climate__share-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* ---- table view ---------------------------------------------------- */
+
+.climate__table {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.climate__table summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.climate__table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.climate__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.climate__table th,
+.climate__table td {
+  padding: 5px 10px 5px 0;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.climate__table thead th {
+  font-weight: 650;
+  color: var(--text-soft);
+}
+
+.climate__table tbody th {
+  font-weight: 500;
+}
+
+/* ---- explanation and method --------------------------------------- */
+
+.climate__explain-button {
+  min-height: 48px;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.climate__explain-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.climate__explanation {
+  padding: 16px 18px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.climate__explanation p:not(.climate__note) {
+  font-size: 16.5px;
+  line-height: 1.6;
+}
+
+.climate__explanation p + p {
+  margin-top: 10px;
+}
+
+.climate__method dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.climate__method-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.climate__method-row dt {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-soft);
+}
+
+.climate__method-row dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+@media (min-width: 720px) {
+  .climate__method-row {
+    grid-template-columns: 12rem 1fr;
+    gap: 16px;
+  }
+
+  .climate__place {
+    font-size: 28px;
+  }
+}
+
+:lang(hi) .climate__note,
+:lang(hi) .climate__tile-note,
+:lang(hi) .climate__method-row dd,
+:lang(hi) .climate__explanation p {
+  line-height: var(--leading-deva);
+}

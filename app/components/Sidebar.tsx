@@ -82,6 +82,25 @@ export function Sidebar() {
         <LocationsPanel />
       </div>
 
+      {/* Its own page and its own chunk: nothing of it loads until opened. */}
+      <Link href="/climate" className="sidebar__faq sidebar__climate" prefetch={false}>
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="M3 16.5h14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path
+            d="M3.5 13l3.6-4.2 3 2.4 4.6-6.2 1.8 1.6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="sidebar__climate-text">
+          <span>{app.t('climate.nav.title')}</span>
+          <span className="sidebar__climate-sub">{app.t('climate.nav.sub')}</span>
+        </span>
+      </Link>
+
       <Link href="/faq" className="sidebar__faq">
         <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
           <circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" strokeWidth="1.5" />

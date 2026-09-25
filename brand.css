@@ -63,6 +63,13 @@
 
   --radius:           10px;
   --radius-card:      14px;
+
+  /* Climate charts: a diverging pair for departures from a baseline, and
+     nothing else. Cool below, warm above, paper at zero. Neither is a
+     severity hue, and every chart that uses them also says it in words.
+     Validated for colour-vision deficiency against both surfaces. */
+  --clim-cool:        #2E6DB0;
+  --clim-warm:        #B4552F;
 }
 
 [data-theme='dark'] {
@@ -97,6 +104,9 @@
   --sev-warning:      #791F1F;   /* ink 8.98:1 */
   --sev-warning-ink:  #FCEBEB;
   --sev-warning-line: #C23232;   /* 3.22:1 on paper — was 1.72:1, invisible */
+
+  --clim-cool:        #5A95D6;
+  --clim-warm:        #D0724A;
 }
 
 /* System preference. Same values as the block above, applied when the user
@@ -135,6 +145,9 @@
     --sev-warning:      #791F1F;   /* ink 8.98:1 */
     --sev-warning-ink:  #FCEBEB;
     --sev-warning-line: #C23232;   /* 3.22:1 on paper — was 1.72:1, invisible */
+
+    --clim-cool:        #5A95D6;
+    --clim-warm:        #D0724A;
 }
 }
 
